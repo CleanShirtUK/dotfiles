@@ -10,8 +10,7 @@ local launcher = "noctalia msg panel-toggle launcher"
 local scripts = home .. "/.config/hypr/scripts"
 local moveWindowWorkspace = scripts .. "/move-window-workspace"
 local focusWorkspace = scripts .. "/focus-workspace"
-local workspaceMru = scripts .. "/workspace-mru"
-local workspaceMruOverlay = scripts .. "/workspace-mru-overlay"
+local hyprshellStart = scripts .. "/hyprshell-start"
 local mainMod = "SUPER"
 local hyprGlassPlugin = home .. "/.local/share/hyprland/plugins/hyprglass.so"
 
@@ -33,7 +32,7 @@ hl.on("hyprland.start", function()
     hl.exec_cmd(scripts .. "/restore-minimized")
     hl.exec_cmd(scripts .. "/float-bitwarden-popup &")
     hl.exec_cmd(scripts .. "/dynamic-app-workspaces &")
-    hl.exec_cmd(workspaceMru .. " track &")
+    hl.exec_cmd(hyprshellStart .. " &")
     hl.exec_cmd("dbus-update-activation-environment --systemd --all")
     hl.exec_cmd("systemctl --user import-environment WAYLAND_DISPLAY XDG_CURRENT_DESKTOP HYPRLAND_INSTANCE_SIGNATURE QT_QPA_PLATFORMTHEME")
     hl.exec_cmd("systemctl --user start hyprland-session.target")
@@ -204,10 +203,6 @@ for key, delta in pairs({
 }) do
     hl.bind(mainMod .. " + CTRL + " .. key, hl.dsp.window.resize({ x = delta.x, y = delta.y, relative = true }), { repeating = true })
 end
-
--- Alt+Tab traverses the monitor-specific workspace MRU history.
-hl.bind("ALT + Tab", hl.dsp.exec_cmd(workspaceMruOverlay .. " next"))
-hl.bind("ALT + SHIFT + Tab", hl.dsp.exec_cmd(workspaceMruOverlay .. " prev"))
 
 hl.bind(mainMod .. " + mouse:272", hl.dsp.window.drag(), { mouse = true })
 hl.bind(mainMod .. " + mouse:273", hl.dsp.window.resize(), { mouse = true })

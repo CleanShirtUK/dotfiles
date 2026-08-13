@@ -1,0 +1,17 @@
+@import url("../gtk-4.0/noctalia.css");
+
+:root {
+    --bg-window-color: alpha(@window_bg_color, 0.9);
+    --bg-color: alpha(@window_bg_color, 0.9);
+    --bg-color-hover: @popover_bg_color;
+    --border-color: alpha(@accent_color, 0.4);
+    --border-color-active: @accent_color;
+    --border-radius: 12px;
+    --border-size: 3px;
+    --window-padding: 8px;
+}
+
+.workspace.active,
+.client.active {
+    color: @accent_color;
+}

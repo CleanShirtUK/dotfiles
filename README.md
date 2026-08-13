@@ -18,11 +18,9 @@ Application workspace routing is handled by
 `.config/hypr/scripts/dynamic-app-workspaces`. It allocates a live workspace
 on the launching monitor for each managed application process tree and routes
 child windows to that workspace. Empty nonpersistent workspaces are removed
-by Hyprland, while navigation and Alt+Tab derive their workspace lists from
-the live Hyprland state.
+by Hyprland. Hyprshell provides the Alt+Tab switcher and selects workspaces on
+the current monitor using its live Hyprland integration.
 
-Alt+Tab is implemented by `.config/hypr/scripts/workspace-mru`. The
-`.config/hypr/scripts/workspace-mru-overlay` wrapper invokes that script first,
-then displays its unchanged monitor-specific workspace MRU through Hyprland's
-built-in notification layer. The overlay is display-only and requires no
-additional project or service.
+Hyprshell is launched by `.config/hypr/scripts/hyprshell-start` and uses the
+tracked configuration in `.config/hyprshell/`. Its stylesheet imports the
+Noctalia GTK4 palette from `.config/gtk-4.0/noctalia.css`.

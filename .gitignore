@@ -7,6 +7,9 @@
 !.config/
 !.config/hypr/
 !.config/hypr/**
+!.config/hyprshell/
+!.config/hyprshell/config.toml
+!.config/hyprshell/styles.css
 !.config/gtk-3.0/
 !.config/gtk-3.0/gtk.css
 !.config/gtk-3.0/noctalia.css

@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+config="${HOME}/.config/hyprshell/config.toml"
+styles="${HOME}/.config/hyprshell/styles.css"
+binary="${HYPRSHELL_BIN:-${HOME}/.cargo/bin/hyprshell}"
+
+if [[ ! -x "$binary" ]]; then
+    binary="$(command -v hyprshell || true)"
+fi
+[[ -n "$binary" && -x "$binary" ]] || exit 0
+exec "$binary" -c "$config" -s "$styles" run

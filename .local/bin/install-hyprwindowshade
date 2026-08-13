@@ -1,0 +1,23 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+repo_url="https://github.com/ManofJELLO/HyprWindowShade.git"
+repo_commit="40b756befa36cfd5cbed65d554c719141a65c420"
+source_dir="${XDG_CACHE_HOME:-$HOME/.cache}/hyprwindowshade/$repo_commit"
+patch_file="$HOME/.config/hypr/patches/hyprwindowshade-per-window-effects.patch"
+
+command -v git >/dev/null || { printf '%s\n' 'error: git is required' >&2; exit 1; }
+command -v g++ >/dev/null || { printf '%s\n' 'error: g++ is required' >&2; exit 1; }
+command -v hyprpm >/dev/null || { printf '%s\n' 'error: hyprpm is required' >&2; exit 1; }
+
+if [[ ! -d "$source_dir/.git" ]]; then
+    mkdir -p "${source_dir%/*}"
+    git clone --filter=blob:none "$repo_url" "$source_dir"
+fi
+
+git -C "$source_dir" fetch --quiet --depth=1 origin "$repo_commit"
+git -C "$source_dir" checkout --quiet --detach "$repo_commit"
+git -C "$source_dir" reset --quiet --hard "$repo_commit"
+git -C "$source_dir" apply "$patch_file"
+(cd "$source_dir" && ./build.sh)

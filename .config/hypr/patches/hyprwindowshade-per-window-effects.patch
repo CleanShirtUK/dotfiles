@@ -1,0 +1,185 @@
+diff --git a/Globals.hpp b/Globals.hpp
+index ff20411..9302bda 100644
+--- a/Globals.hpp
++++ b/Globals.hpp
+@@ -62,6 +62,8 @@ extern std::vector<CHyprSignalListener> g_Listeners;
+ // identity. String-keyed maps below stay std::map — small-N tree lookups on
+ // short keys are comparable to hashing without the bucket-allocation overhead.
+ extern std::unordered_map<Desktop::View::CWindow*, std::string> g_mWindowManualShaders;
++// Monotonic start time for address-targeted, event-relative shader effects.
++extern std::unordered_map<Desktop::View::CWindow*, std::chrono::steady_clock::time_point> g_mWindowShaderStarts;
+ 
+ struct WindowShaderState {
+     std::string active;
+@@ -83,6 +85,7 @@ struct CompiledShader {
+     GLint     isActiveLoc     = -1; // float 0/1
+     GLint     isFloatingLoc   = -1; // float 0/1
+     GLint     isFullscreenLoc = -1; // float 0/1
++    GLint     effectTimeLoc   = -1; // seconds since the targeted effect started
+     bool      usesTime        = false;
+     time_t    sourceMtime     = 0; // mtime at compile time; lets us auto-evict on edit
+ };
+@@ -117,4 +120,4 @@ extern thread_local CompiledShader*   g_pCurrentCompiledShader;
+ CompiledShader*                             getOrCompileShader(const std::string& shaderPath);
+ void                                        hkGLDrawTex(void* thisptr, Hyprutils::Memory::CWeakPointer<CTexPassElement> element, const CRegion& damage);
+ Hyprutils::Memory::CWeakPointer<CShader>    hkUseShader(CHyprOpenGLImpl* thisptr, Hyprutils::Memory::CWeakPointer<CShader> prog);
+-void                                        applyShaderRulesSafe(PHLWINDOW pWindow);
+\ No newline at end of file
++void                                        applyShaderRulesSafe(PHLWINDOW pWindow);
+diff --git a/Hooks.cpp b/Hooks.cpp
+index dc96d7d..5594500 100644
+--- a/Hooks.cpp
++++ b/Hooks.cpp
+@@ -91,6 +91,13 @@ void hkGLDrawTex(void* thisptr, Hyprutils::Memory::CWeakPointer<CTexPassElement>
+             }
+         }
+         pLS = elem->m_data.currentLS.lock();
++
++        // Some clients, notably WezTerm, render surfaces that do not resolve
++        // through CWLSurface::view() to their top-level CWindow. During the
++        // synchronous render pass Hyprland already identifies the owning
++        // window, so use that context as a final client-surface fallback.
++        if (!pWindow && !pLS)
++            pWindow = g_pHyprRenderer->m_renderData.currentWindow.lock();
+     }
+ 
+     g_pCurrentRenderWindow = pWindow;
+@@ -183,6 +190,16 @@ Hyprutils::Memory::CWeakPointer<CShader> hkUseShader(CHyprOpenGLImpl* thisptr, H
+             const float v = (contextWindow && Fullscreen::controller()->isFullscreen(contextWindow)) ? 1.0f : 0.0f;
+             glUniform1f(activeEntry->isFullscreenLoc, v);
+         }
++        if (activeEntry->effectTimeLoc >= 0) {
++            float effectTime = 0.0f;
++            if (contextWindow) {
++                auto it = g_mWindowShaderStarts.find(contextWindow.get());
++                if (it != g_mWindowShaderStarts.end())
++                    effectTime = std::chrono::duration_cast<std::chrono::duration<float>>(
++                        std::chrono::steady_clock::now() - it->second).count();
++            }
++            glUniform1f(activeEntry->effectTimeLoc, effectTime);
++        }
+     }
+ 
+     return result;
+diff --git a/ShaderEngine.cpp b/ShaderEngine.cpp
+index f4c3852..939d7f9 100644
+--- a/ShaderEngine.cpp
++++ b/ShaderEngine.cpp
+@@ -126,10 +126,12 @@ CompiledShader* getOrCompileShader(const std::string& shaderPath) {
+     entry.isActiveLoc     = glGetUniformLocation(prog, "is_active");
+     entry.isFloatingLoc   = glGetUniformLocation(prog, "is_floating");
+     entry.isFullscreenLoc = glGetUniformLocation(prog, "is_fullscreen");
++    // Unlike `time`, this uniform is reset for each address-targeted effect.
++    entry.effectTimeLoc   = glGetUniformLocation(prog, "effect_time");
+     // Continuous redraw is needed only when the shader actually binds `time`.
+     // Using the location instead of substring matching avoids false positives
+     // like "lifetime" or "uniform_time_offset".
+-    entry.usesTime    = (entry.timeLoc >= 0);
++    entry.usesTime    = (entry.timeLoc >= 0 || entry.effectTimeLoc >= 0);
+     entry.sourceMtime = currentMtime;
+ 
+     auto [insertedIt, _] = g_mCompiledCShaders.emplace(shaderPath, std::move(entry));
+diff --git a/main.cpp b/main.cpp
+index 7b3b64a..1b48f28 100644
+--- a/main.cpp
++++ b/main.cpp
+@@ -8,6 +8,7 @@
+ HANDLE                                                PHANDLE = nullptr;
+ std::vector<CHyprSignalListener>                      g_Listeners;
+ std::unordered_map<Desktop::View::CWindow*, std::string>        g_mWindowManualShaders;
++std::unordered_map<Desktop::View::CWindow*, std::chrono::steady_clock::time_point> g_mWindowShaderStarts;
+ std::unordered_map<Desktop::View::CWindow*, WindowShaderState>  g_mWindowRuleShaders;
+ std::map<std::string, std::string>                    g_mLayerNamespaceShaderMap;
+ std::map<std::string, std::string>                    g_mWindowClassShaderMap;
+@@ -82,13 +83,36 @@ namespace shadeActions {
+         if (!pWindow) return;
+ 
+         Desktop::View::CWindow* rawWin = pWindow.get();
+-        if (path == "clear" || path == "none" || g_mWindowManualShaders.find(rawWin) != g_mWindowManualShaders.end())
++        if (path == "clear" || path == "none" || g_mWindowManualShaders.find(rawWin) != g_mWindowManualShaders.end()) {
+             g_mWindowManualShaders.erase(rawWin);
+-        else
++            g_mWindowShaderStarts.erase(rawWin);
++        } else {
+             g_mWindowManualShaders[rawWin] = path;
++            g_mWindowShaderStarts[rawWin] = std::chrono::steady_clock::now();
++        }
+         g_pHyprRenderer->damageWindow(pWindow);
+     }
+ 
++    // Apply a shader to one concrete window without affecting other windows
++    // that happen to share its class.
++    static void setWindowShader(const std::string& address, const std::string& path) {
++        uintptr_t rawAddress = 0;
++        try { rawAddress = std::stoull(address, nullptr, 0); } catch (...) { return; }
++        for (auto& window : Desktop::windowState()->windows()) {
++            if (!window || reinterpret_cast<uintptr_t>(window.get()) != rawAddress) continue;
++            auto* rawWindow = window.get();
++            if (path == "clear" || path == "none") {
++                g_mWindowManualShaders.erase(rawWindow);
++                g_mWindowShaderStarts.erase(rawWindow);
++            } else {
++                g_mWindowManualShaders[rawWindow] = path;
++                g_mWindowShaderStarts[rawWindow] = std::chrono::steady_clock::now();
++            }
++            g_pHyprRenderer->damageWindow(window);
++            return;
++        }
++    }
++
+     static void setClassShader(const std::string& cls, const std::string& path) {
+         if (path == "clear" || path == "none") g_mWindowClassShaderMap.erase(cls);
+         else                                   g_mWindowClassShaderMap[cls] = path;
+@@ -132,7 +156,10 @@ static int luaToggleLayerShader(lua_State* L) {
+     return 0;
+ }
+ static int luaToggleWindowShader(lua_State* L) {
+-    shadeActions::toggleWindowShader(luaL_checkstring(L, 1));
++    if (lua_gettop(L) >= 2)
++        shadeActions::setWindowShader(luaL_checkstring(L, 1), luaL_checkstring(L, 2));
++    else
++        shadeActions::toggleWindowShader(luaL_checkstring(L, 1));
+     return 0;
+ }
+ static int luaClassShader(lua_State* L) {
+@@ -159,7 +186,7 @@ APICALL EXPORT PLUGIN_DESCRIPTION_INFO PLUGIN_INIT(HANDLE handle) {
+     auto methodsDraw = HyprlandAPI::findFunctionsByName(PHANDLE, "draw");
+     void* drawAddr = nullptr;
+     for (auto& m : methodsDraw) {
+-        if (m.demangled.find("CGLElementRenderer::draw")  != std::string::npos &&
++        if (m.demangled.find("Render::GL::CGLElementRenderer::draw") != std::string::npos &&
+             m.demangled.find("CTexPassElement")           != std::string::npos) {
+             drawAddr = m.address;
+             break;
+@@ -176,7 +203,7 @@ APICALL EXPORT PLUGIN_DESCRIPTION_INFO PLUGIN_INIT(HANDLE handle) {
+     auto methodsUse = HyprlandAPI::findFunctionsByName(PHANDLE, "useShader");
+     void* useAddr = nullptr;
+     for (auto& m : methodsUse) {
+-        if (m.demangled.find("CHyprOpenGLImpl::useShader") != std::string::npos) {
++        if (m.demangled.find("Render::GL::CHyprOpenGLImpl::useShader") != std::string::npos) {
+             useAddr = m.address;
+             break;
+         }
+@@ -215,6 +242,7 @@ APICALL EXPORT PLUGIN_DESCRIPTION_INFO PLUGIN_INIT(HANDLE handle) {
+         if (!window) return;
+         Desktop::View::CWindow* rawWin = window.get();
+         g_mWindowManualShaders.erase(rawWin);
++        g_mWindowShaderStarts.erase(rawWin);
+         g_mWindowRuleShaders.erase(rawWin);
+     }));
+ 
+@@ -276,6 +304,7 @@ APICALL EXPORT void PLUGIN_EXIT() {
+     g_Listeners.clear();
+ 
+     g_mWindowManualShaders.clear();
++    g_mWindowShaderStarts.clear();
+     g_mWindowRuleShaders.clear();
+     g_mLayerNamespaceShaderMap.clear();
+     g_mWindowClassShaderMap.clear();
+@@ -303,4 +332,4 @@ APICALL EXPORT void PLUGIN_EXIT() {
+     HyprlandAPI::removeLuaFunction(PHANDLE, "HyprWindowShade", "classshader");
+     HyprlandAPI::removeLuaFunction(PHANDLE, "HyprWindowShade", "toggleclassshader");
+     HyprlandAPI::removeLuaFunction(PHANDLE, "HyprWindowShade", "reloadshaders");
+-}
+\ No newline at end of file
++}

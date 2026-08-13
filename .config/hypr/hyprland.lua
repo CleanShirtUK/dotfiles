@@ -12,6 +12,7 @@ local moveWindowWorkspace = scripts .. "/move-window-workspace"
 local focusWorkspace = scripts .. "/focus-workspace"
 local mainMod = "SUPER"
 local hyprGlassPlugin = home .. "/.local/share/hyprland/plugins/hyprglass.so"
+local hyprWindowShadePlugin = home .. "/.local/share/hyprland/plugins/HyprWindowShade.so"
 
 require("monitors")
 dofile(home .. "/.config/hypr/noctalia.lua")
@@ -36,7 +37,7 @@ hl.on("hyprland.start", function()
     hl.exec_cmd("systemctl --user import-environment WAYLAND_DISPLAY XDG_CURRENT_DESKTOP HYPRLAND_INSTANCE_SIGNATURE QT_QPA_PLATFORMTHEME")
     hl.exec_cmd("systemctl --user start hyprland-session.target")
     hl.exec_cmd("systemctl --user start xdg-desktop-portal-hyprland")
-    hl.exec_cmd([[sh -c 'hyprpm reload 2>/dev/null || true; hyprctl plugin load ]] .. hyprGlassPlugin .. [[ 2>/dev/null || true; sleep 0.5; hyprctl reload config-only']])
+    hl.exec_cmd([[sh -c 'hyprpm reload 2>/dev/null || true; hyprctl plugin load ]] .. hyprGlassPlugin .. [[ 2>/dev/null || true; hyprctl plugin load ]] .. hyprWindowShadePlugin .. [[ 2>/dev/null || true; systemctl --user restart window-shader-events.service; sleep 0.5; hyprctl reload config-only']])
 end)
 
 hl.on("hyprland.shutdown", function()
@@ -113,13 +114,13 @@ if hl.plugin.hyprglass then
     })
 
     hg.preset("glass", {
-        glass_opacity = 0.95,
+        glass_opacity = 1,
         blur_strength = 0.7,
         blur_iterations = 3,
         refraction_strength = 1,
         chromatic_aberration = 0.5,
-        edge_thickness = 1,
-        lens_distortion = 0.2,
+        edge_thickness = 0.1,
+        lens_distortion = 0.9,
         brightness = 1.1,
         contrast = 1.4,
     })
@@ -251,10 +252,12 @@ for _, class in ipairs({
     "^org\\.gnome\\.DiskUtility$",
     "^gnome-disk-utility$",
     "^zenity$",
+    "^bitwarden$",
     "^com\\.rustdesk\\.RustDesk$",
     "^net\\.davidotek\\.pupgui2$",
     "^dev\\.noctalia\\.Noctalia$",
     "^xdg-desktop-portal-gtk$",
+    "^org\\.gnome\\.Software$",
     }) do
     hl.window_rule({
         name = "float-utility-" .. class,
@@ -263,6 +266,17 @@ for _, class in ipairs({
         center = true,
     })
 end
+
+hl.window_rule({
+    name = "top-right-bitwarden",
+    match = { class = "^bitwarden$" },
+    float = true,
+    max_size = { 99999, 800 },
+     move = {
+         "(monitor_w-window_w-20)",
+         "20",
+     },
+ })
 
 hl.window_rule({
     name = "constrain-gtk-file-chooser",

@@ -2,5 +2,6 @@
 Description=Hyprland graphical session
 BindsTo=graphical-session.target
 Wants=graphical-session-pre.target
+Wants=syncthing.service
 After=graphical-session-pre.target
 Before=graphical-session.target

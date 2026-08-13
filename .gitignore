@@ -33,9 +33,11 @@
 !.config/systemd/user/hyprland-session.target
 !.config/systemd/user/ps3-wave-wallpaper.service
 !.config/systemd/user/hyprshell.service
+!.config/systemd/user/window-shader-events.service
 !.local/share/
 !.local/share/color-schemes/
 !.local/share/color-schemes/noctalia.colors
 !.local/
 !.local/bin/
 !.local/bin/dotfiles-install-wallpaper
+!.local/bin/install-hyprwindowshade

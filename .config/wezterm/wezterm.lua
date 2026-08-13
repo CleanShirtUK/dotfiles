@@ -13,5 +13,17 @@ config.window_padding = {
   bottom = 30,
 }
 config.window_background_opacity = 0.4
+config.keys = {
+  {
+    key = 'c',
+    mods = 'CTRL',
+    action = wezterm.action.CopyTo 'Clipboard',
+  },
+  {
+    key = 'v',
+    mods = 'CTRL',
+    action = wezterm.action.PasteFrom 'Clipboard',
+  },
+}
 
 return config

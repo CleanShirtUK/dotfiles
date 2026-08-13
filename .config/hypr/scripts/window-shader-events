@@ -1,0 +1,97 @@
+#!/usr/bin/env bash
+
+set -u
+
+socket="$XDG_RUNTIME_DIR/hypr/$HYPRLAND_INSTANCE_SIGNATURE/.socket2.sock"
+shader="$HOME/.config/hypr/shaders/window-ripple.glsl"
+state_dir="${XDG_RUNTIME_DIR}/hypr-window-shader"
+lock_file="$state_dir/daemon.lock"
+active_windows="$state_dir/active-windows"
+duration="2.0"
+open_delay="0.05"
+
+mkdir -p "$state_dir"
+exec 8>"$lock_file"
+flock -n 8 || exit 0
+: > "$active_windows"
+
+excluded_class() {
+    case "$1" in
+        steam_app_*|Affinity|affinity|affinity.exe) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
+set_window_shader() {
+    local address path lua_address lua_path command
+    address="$1"
+    path="$2"
+    [[ -n "$address" ]] || return 0
+    [[ "$address" == 0x* ]] || address="0x$address"
+    lua_address="\"$address\""
+    lua_path="\"$path\""
+    command="hl.plugin.HyprWindowShade.togglewindowshader($lua_address, $lua_path)"
+    hyprctl eval "$command" >/dev/null 2>&1 || true
+}
+
+remember_window() {
+    local address="$1"
+    grep -Fqx -- "$address" "$active_windows" 2>/dev/null || printf '%s\n' "$address" >> "$active_windows"
+}
+
+forget_window() {
+    local address="$1" temporary
+    temporary="$active_windows.tmp"
+    while IFS= read -r remembered; do
+        [[ "$remembered" == "$address" ]] || printf '%s\n' "$remembered"
+    done < "$active_windows" > "$temporary" 2>/dev/null || true
+    mv "$temporary" "$active_windows"
+}
+
+animate_window() {
+    local address="$1"
+    if grep -Fqx -- "$address" "$active_windows" 2>/dev/null; then
+        return 0
+    fi
+    remember_window "$address"
+    sleep "$open_delay"
+    # openwindow can arrive before the new client is present in the plugin's
+    # window list. Wait for the address-targeted API to be able to find it.
+    for _ in {1..20}; do
+        if hyprctl -j clients 2>/dev/null | jq -e --arg address "0x${address#0x}" \
+            '.[] | select(.address == $address)' >/dev/null; then
+            break
+        fi
+        sleep 0.05
+    done
+    set_window_shader "$address" "$shader"
+    (
+        sleep "$duration"
+        set_window_shader "$address" clear
+        forget_window "$address"
+    ) &
+}
+
+clear_window() {
+    local address="$1"
+    [[ -n "$address" ]] && set_window_shader "$address" clear
+    forget_window "$address"
+}
+
+while :; do
+    [[ -S "$socket" ]] || { sleep 0.2; continue; }
+    while IFS= read -r event; do
+        case "$event" in
+            openwindow\>\>*)
+                data="${event#openwindow>>}"
+                IFS=',' read -r address _workspace class _title <<< "$data"
+                event_class="$class"
+                excluded_class "$class" || animate_window "$address"
+                ;;
+            closewindow\>\>*)
+                clear_window "${event#closewindow>>}"
+                ;;
+        esac
+    done < <(socat -u "UNIX-CONNECT:$socket" - 2>/dev/null)
+    sleep 0.2
+done

@@ -10,25 +10,16 @@ active="$(hyprctl activeworkspace -j)"
 monitor="$(jq -r '.monitor' <<<"$active")"
 current="$(jq -r '.id' <<<"$active")"
 
-case "$monitor" in
-    DP-1) min=1; max=5 ;;
-    HDMI-A-1) min=6; max=10 ;;
-    *) exit 0 ;;
-esac
-
-safe_monitor="${monitor//[^A-Za-z0-9_.-]/_}"
+    safe_monitor="${monitor//[^A-Za-z0-9_.-]/_}"
 history_file="$state_dir/$safe_monitor.history"
 state_file="$state_dir/$safe_monitor.traversal"
 
 build_default_history() {
     local value="$current"
     local workspace
-    for ((workspace = current + 1; workspace <= max; workspace++)); do
-        workspace_has_clients "$workspace" && value+=" $workspace"
-    done
-    for ((workspace = current - 1; workspace >= min; workspace--)); do
-        workspace_has_clients "$workspace" && value+=" $workspace"
-    done
+    while IFS= read -r workspace; do
+        [[ "$workspace" == "$current" ]] || value+=" $workspace"
+    done < <(hyprctl workspaces -j | jq -r --arg monitor "$monitor" '.[] | select(.monitor == $monitor) | .id' | sort -n)
     printf '%s\n' "$value"
 }
 
@@ -42,7 +33,8 @@ ensure_history() {
     read -ra entries <<< "$history"
     for entry in "${entries[@]}"; do
         [[ "$entry" =~ ^[0-9]+$ ]] || continue
-        (( entry >= min && entry <= max )) || continue
+        hyprctl workspaces -j | jq -e --arg monitor "$monitor" --argjson workspace "$entry" \
+            'any(.[]; .monitor == $monitor and .id == $workspace)' >/dev/null || continue
         workspace_has_clients "$entry" || continue
         filtered+=("$entry")
         [[ "$entry" == "$current" ]] && found=1
@@ -69,11 +61,6 @@ workspace_has_clients() {
 record_workspace() {
     local record_monitor="$1"
     local record_workspace="$2"
-    case "$record_monitor" in
-        DP-1) min=1; max=5 ;;
-        HDMI-A-1) min=6; max=10 ;;
-        *) return 0 ;;
-    esac
     local safe="${record_monitor//[^A-Za-z0-9_.-]/_}"
     local history_file="$state_dir/$safe.history"
     [[ -f "$state_dir/$safe.traversal" ]] && return 0

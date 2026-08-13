@@ -35,22 +35,23 @@ if [ "$has_window" = true ]; then
     exit 0
 fi
 
-case "$monitor" in
-    DP-1) min=1; max=5 ;;
-    HDMI-A-1) min=6; max=10 ;;
-    *) exit 0 ;;
-esac
+mapfile -t workspaces < <(
+    hyprctl workspaces -j |
+        jq -r --arg monitor "$monitor" '.[] | select(.monitor == $monitor) | .id' |
+        sort -n
+)
 
-# Wrap at the edge of each monitor's workspace range.
-if [ "$workspace" -eq "$min" ] && [ "$step" -lt 0 ]; then
-    target="$max"
-elif [ "$workspace" -eq "$max" ] && [ "$step" -gt 0 ]; then
-    target="$min"
-else
-    target=$((workspace + step))
-fi
+count=${#workspaces[@]}
+[ "$count" -gt 0 ] || exit 0
 
-[ "$target" -ge "$min" ] || exit 0
-[ "$target" -le "$max" ] || exit 0
+index=0
+for i in "${!workspaces[@]}"; do
+    [ "${workspaces[$i]}" -eq "$workspace" ] && index="$i"
+done
+
+target_index=$((index + step))
+[ "$target_index" -ge 0 ] || target_index=$((count - 1))
+[ "$target_index" -lt "$count" ] || target_index=0
+target="${workspaces[$target_index]}"
 
 hyprctl dispatch --quiet "hl.dsp.focus({ workspace = \"$target\" })"

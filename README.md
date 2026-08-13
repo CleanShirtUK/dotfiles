@@ -7,9 +7,16 @@ Personal Hyprland and Noctalia configuration.
 - Hyprland, Hypridle, and Hyprlock
 - Noctalia
 - `hyprglass` plugin
-- `jq`, `socat`, `grim`, `slurp`, and `wl-copy`
+- `bash`, `flock`, `jq`, `socat`, `grim`, `slurp`, and `wl-copy`
 - The separate [`ps3-wave-wallpaper`](https://github.com/CleanShirtUK/ps3-wave-wallpaper) project
 
 The wallpaper project is installed and built by
 allow-listed through `.gitignore`; only reviewed configuration files are
 tracked.
+
+Application workspace routing is handled by
+`.config/hypr/scripts/dynamic-app-workspaces`. It allocates a live workspace
+on the launching monitor for each managed application process tree and routes
+child windows to that workspace. Empty nonpersistent workspaces are removed
+by Hyprland, while navigation and Alt+Tab derive their workspace lists from
+the live Hyprland state.

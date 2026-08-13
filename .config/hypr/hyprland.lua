@@ -31,6 +31,7 @@ hl.on("hyprland.start", function()
     hl.exec_cmd("systemctl --user start plasma-polkit-agent.service")
     hl.exec_cmd(scripts .. "/restore-minimized")
     hl.exec_cmd(scripts .. "/float-bitwarden-popup &")
+    hl.exec_cmd(scripts .. "/dynamic-app-workspaces &")
     hl.exec_cmd("dbus-update-activation-environment --systemd --all")
     hl.exec_cmd("systemctl --user import-environment WAYLAND_DISPLAY XDG_CURRENT_DESKTOP HYPRLAND_INSTANCE_SIGNATURE QT_QPA_PLATFORMTHEME")
     hl.exec_cmd("systemctl --user start hyprland-session.target")
@@ -72,7 +73,7 @@ hl.config({
     input = {
         kb_layout = "us",
 --	follow_mouse = 2,
-        mouse_refocus = true,
+        mouse_refocus = false,
         sensitivity = 0,
         touchpad = { natural_scroll = false },
     },
@@ -216,8 +217,6 @@ hl.bind("mouse:272", hl.dsp.exec_cmd(scripts .. "/toggle-float-double-click"), {
 hl.window_rule({
     name = "steam-games",
     match = { class = "^steam_app_.*" },
-    monitor = "HDMI-A-1",
-    workspace = "10",
     immediate = true,
     no_anim = true,
     no_blur = true,
@@ -285,18 +284,6 @@ hl.window_rule({
 })
 
 hl.window_rule({
-    name = "zed-new-workspace",
-    match = { class = "^(dev\\.zed\\.Zed|Zed)$" },
-    workspace = "emptynm",
-})
-
-hl.window_rule({
-    name = "zen-new-workspace",
-    match = { class = "^(zen)$" },
-    workspace = "emptynm",
-})
-
-hl.window_rule({
     name = "float-bitwarden-popup",
     match = { title = "^Extension:.*Bitwarden.*" },
     float = true,
@@ -341,15 +328,9 @@ local suppressMaximizeRule = hl.window_rule({
 })
 suppressMaximizeRule:set_enabled(false)
 
--- Persistent workspaces
-
-for workspace = 1, 5 do
-    hl.workspace_rule({ workspace = tostring(workspace), monitor = "DP-1", persistent = true, default = workspace == 1 })
-end
-
-for workspace = 6, 10 do
-    hl.workspace_rule({ workspace = tostring(workspace), monitor = "HDMI-A-1", persistent = true, default = workspace == 6 })
-end
+-- Keep one default workspace per monitor; application workspaces are dynamic.
+hl.workspace_rule({ workspace = "1", monitor = "DP-1", default = true, persistent = true })
+hl.workspace_rule({ workspace = "6", monitor = "HDMI-A-1", default = true, persistent = true })
 
 require("noctalia").apply_theme()
 

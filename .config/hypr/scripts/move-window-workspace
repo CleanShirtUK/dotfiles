@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/usr/bin/env bash
 
 set -eu
 
@@ -13,15 +13,23 @@ active=$(hyprctl activewindow -j)
 workspace=$(printf '%s\n' "$active" | jq -r '.workspace.id')
 monitor=$(hyprctl activeworkspace -j | jq -r '.monitor')
 
-case "$monitor" in
-    DP-1) min=1; max=5 ;;
-    HDMI-A-1) min=6; max=10 ;;
-    *) exit 0 ;;
-esac
+mapfile -t workspaces < <(
+    hyprctl workspaces -j |
+        jq -r --arg monitor "$monitor" '.[] | select(.monitor == $monitor) | .id' |
+        sort -n
+)
 
-target=$((workspace + step))
-[ "$target" -ge "$min" ] || exit 0
-[ "$target" -le "$max" ] || exit 0
+index=0
+for i in "${!workspaces[@]}"; do
+    [ "${workspaces[$i]}" -eq "$workspace" ] && index="$i"
+done
+
+target_index=$((index + step))
+if [ "$target_index" -lt 0 ] || [ "$target_index" -ge "${#workspaces[@]}" ]; then
+    hyprctl dispatch --quiet "hl.dsp.window.move({ workspace = \"emptynm\" })"
+    exit 0
+fi
+target="${workspaces[$target_index]}"
 
 hyprctl dispatch --quiet "hl.dsp.window.move({ workspace = $target })"
 hyprctl dispatch --quiet "hl.dsp.focus({ workspace = \"$target\" })"

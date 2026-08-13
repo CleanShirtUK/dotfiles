@@ -1,0 +1,149 @@
+#!/usr/bin/env bash
+
+set -u
+
+socket="$XDG_RUNTIME_DIR/hypr/$HYPRLAND_INSTANCE_SIGNATURE/.socket2.sock"
+state_dir="${XDG_RUNTIME_DIR}/hypr-dynamic-workspaces"
+mkdir -p "$state_dir"
+lock_file="$state_dir/.lock"
+daemon_lock="$state_dir/daemon.lock"
+exec 8>"$daemon_lock"
+flock -n 8 || exit 0
+
+for state in "$state_dir"/*; do
+    [[ "${state##*/}" == .lock || ! -f "$state" ]] && continue
+    pid="${state##*/}"
+    kill -0 "$pid" 2>/dev/null || rm -f "$state"
+done
+
+# These classes are routed by process ancestry. The first window from a
+# process tree reserves a workspace; child windows stay with that instance.
+managed_class() {
+    case "$1" in
+        Inkscape|org.inkscape.Inkscape|resolve|com.blackmagicdesign.resolve|Affinity|affinity|affinity.exe|md.Obsidian|md.obsidian.Obsidian|feishin|org.jeffvli.feishin|dev.zed.Zed|Zed|zen|steam|steam_app_*|obs|com.obsproject.Studio|darktable|org.darktable.darktable) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
+client_json() {
+    hyprctl clients -j 2>/dev/null
+}
+
+reserved_workspace() {
+    case "$1" in
+        DP-1) printf '1\n' ;;
+        HDMI-A-1) printf '6\n' ;;
+    esac
+}
+
+monitor_name() {
+    hyprctl monitors -j | jq -r --argjson index "$1" 'first(.[] | select(.id == $index) | .name) // empty'
+}
+
+find_workspace_for_pid() {
+    local pid="$1" parent workspace
+    while [[ "$pid" =~ ^[0-9]+$ && "$pid" -gt 1 ]]; do
+        workspace="$(awk -F= '$1 == "workspace" { print $2; exit }' "$state_dir/$pid" 2>/dev/null || true)"
+        [[ -n "$workspace" ]] && { printf '%s\n' "$workspace"; return 0; }
+        parent="$(ps -o ppid= -p "$pid" 2>/dev/null | tr -d ' ')"
+        [[ "$parent" =~ ^[0-9]+$ && "$parent" != "$pid" ]] || break
+        pid="$parent"
+    done
+    return 1
+}
+
+route_window() {
+    exec 9>"$lock_file"
+    flock 9
+
+    local address="$1" client class pid workspace="" current_workspace reserved monitor
+    for _ in {1..20}; do
+        client="$(client_json | jq -c --arg address "0x${address#0x}" 'first(.[] | select(.address == $address)) // empty')"
+        [[ -n "$client" ]] && break
+        sleep 0.1
+    done
+    [[ -n "$client" ]] || return 0
+
+    class="$(jq -r '.class' <<<"$client")"
+    pid="$(jq -r '.pid' <<<"$client")"
+    current_workspace="$(jq -r '.workspace.name' <<<"$client")"
+    monitor="$(monitor_name "$(jq -r '.monitor' <<<"$client")")"
+    reserved="$(reserved_workspace "$monitor")"
+
+    # Persistent landing workspaces stay visibly empty. Any new window that
+    # lands there is given a fresh dynamic workspace immediately.
+    if [[ -n "$reserved" && "$current_workspace" == "$reserved" ]]; then
+        hyprctl dispatch --quiet \
+            "hl.dsp.window.move({ workspace = \"emptynm\", window = \"address:0x${address#0x}\" })" \
+            >/dev/null 2>&1
+        current_workspace="$(hyprctl clients -j | jq -r --arg address "0x${address#0x}" 'first(.[] | select(.address == $address) | .workspace.name) // empty')"
+        workspace="$current_workspace"
+    fi
+
+    managed_class "$class" || return 0
+
+    [[ -n "$workspace" ]] || workspace="$(find_workspace_for_pid "$pid" || true)"
+    if [[ -z "$workspace" ]]; then
+        hyprctl dispatch --quiet \
+            "hl.dsp.window.move({ workspace = \"emptynm\", window = \"address:0x${address#0x}\" })" \
+            >/dev/null 2>&1
+        workspace="$(hyprctl clients -j | jq -r --arg address "0x${address#0x}" 'first(.[] | select(.address == $address) | .workspace.name) // empty')"
+        [[ -n "$workspace" ]] || return 0
+        printf 'class=%s\nworkspace=%s\n' "$class" "$workspace" > "$state_dir/$pid"
+    elif [[ "$(jq -r '.workspace.name' <<<"$client")" != "$workspace" ]]; then
+        hyprctl dispatch --quiet \
+            "hl.dsp.window.move({ workspace = \"$workspace\", window = \"address:0x${address#0x}\" })" \
+            >/dev/null 2>&1
+    fi
+
+}
+
+cleanup() {
+    local active monitor current target
+
+    while IFS= read -r state; do
+        [[ -f "$state" ]] || continue
+        [[ "${state##*/}" == .lock ]] && continue
+        pid="${state##*/}"
+        kill -0 "$pid" 2>/dev/null || rm -f "$state"
+    done < <(printf '%s\n' "$state_dir"/* 2>/dev/null)
+
+    sleep 0.1
+    active="$(hyprctl activeworkspace -j 2>/dev/null)" || return 0
+    monitor="$(jq -r '.monitor' <<<"$active")"
+    current="$(jq -r '.id' <<<"$active")"
+
+    hyprctl clients -j 2>/dev/null | jq -e --argjson workspace "$current" \
+        'any(.[]; .mapped and (.hidden | not) and .workspace.id == $workspace)' >/dev/null || {
+        target="$(
+            hyprctl workspaces -j 2>/dev/null |
+                jq -r --arg monitor "$monitor" --argjson current "$current" '
+                    [ .[]
+                      | select(.monitor == $monitor and .windows > 0)
+                      | {id, distance: ((.id - $current) | if . < 0 then - . else . end)}
+                    ]
+                    | sort_by([.distance, .id])
+                    | first
+                    | .id // empty
+                '
+        )"
+        [[ -n "$target" ]] && hyprctl dispatch --quiet "hl.dsp.focus({ workspace = \"$target\" })" >/dev/null 2>&1
+    }
+
+}
+
+while :; do
+    [[ -S "$socket" ]] || { sleep 0.2; continue; }
+    while IFS= read -r event; do
+        case "$event" in
+            openwindow\>*)
+                address="${event#openwindow>>}"
+                address="${address%%,*}"
+                sleep 0.05
+                route_window "$address" &
+                ;;
+            closewindow\>*) cleanup ;;
+        esac
+    done < <(socat -u "UNIX-CONNECT:$socket" - 2>/dev/null)
+    sleep 0.2
+done

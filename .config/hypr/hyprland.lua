@@ -278,6 +278,13 @@ hl.window_rule({
 })
 
 hl.window_rule({
+    name = "float-obsidian-settings",
+    match = { title = "^Settings.*$" },
+    float = true,
+    center = true,
+})
+
+hl.window_rule({
     name = "zed-new-workspace",
     match = { class = "^(dev\\.zed\\.Zed|Zed)$" },
     workspace = "emptynm",

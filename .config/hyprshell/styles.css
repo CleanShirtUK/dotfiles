@@ -2,16 +2,21 @@
 
 :root {
     --bg-window-color: alpha(@window_bg_color, 0.9);
-    --bg-color: alpha(@window_bg_color, 0.9);
+    --bg-color: alpha(@window_bg_color, 0);
     --bg-color-hover: @popover_bg_color;
-    --border-color: alpha(@accent_color, 0.4);
+    --border-color: alpha(@accent_color, 0);
     --border-color-active: @accent_color;
     --border-radius: 12px;
-    --border-size: 3px;
+    --border-size: 1px;
     --window-padding: 8px;
 }
 
 .workspace.active,
 .client.active {
     color: @accent_color;
+}
+
+.workspace,
+.client {
+    font-size: 12px;
 }

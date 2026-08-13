@@ -1,7 +1,7 @@
 version = 4
 
 [windows]
-scale = 8.5
+scale = 4
 items_per_row = 5
 
 [windows.switch]

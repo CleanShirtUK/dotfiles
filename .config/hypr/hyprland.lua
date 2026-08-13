@@ -110,6 +110,7 @@ if hl.plugin.hyprglass then
     hg.config({
         default_theme = "dark",
         default_preset = "glass",
+        layers = { enabled = 1 },
     })
 
     hg.preset("glass", {
@@ -123,6 +124,9 @@ if hl.plugin.hyprglass then
         brightness = 1.1,
         contrast = 1.4,
     })
+
+    hg.layer("hyprshell_switch", { exclude = true })
+
 end
 
 -- Animations
@@ -309,7 +313,18 @@ hl.window_rule({
     no_focus = true,
 })
 
-hl.window_rule({ name = "steam-no-decoration", match = { class = "^steam$" }, decorate = false })
+hl.window_rule({
+    name = "float-steam-transient-windows",
+    match = { class = "^steam$" },
+    float = true,
+})
+
+hl.window_rule({
+    name = "keep-steam-main-window-tiled",
+    match = { class = "^steam$", title = "^Steam$" },
+    float = false,
+    decorate = false,
+})
 
 hl.window_rule({
     name = "wezterm-no-hyprbar",

@@ -13,7 +13,6 @@ local focusWorkspace = scripts .. "/focus-workspace"
 local mainMod = "SUPER"
 local hyprGlassPlugin = home .. "/.local/share/hyprland/plugins/hyprglass.so"
 local hyprWindowShadePlugin = home .. "/.local/share/hyprland/plugins/HyprWindowShade.so"
-local hyprWobblyPlugin = home .. "/.local/share/hyprland/plugins/hyprwobbly.so"
 
 require("monitors")
 dofile(home .. "/.config/hypr/noctalia.lua")
@@ -38,7 +37,7 @@ hl.on("hyprland.start", function()
     hl.exec_cmd("systemctl --user import-environment WAYLAND_DISPLAY XDG_CURRENT_DESKTOP HYPRLAND_INSTANCE_SIGNATURE QT_QPA_PLATFORMTHEME")
     hl.exec_cmd("systemctl --user start hyprland-session.target")
     hl.exec_cmd("systemctl --user start xdg-desktop-portal-hyprland")
-    hl.exec_cmd([[sh -c 'hyprpm reload 2>/dev/null || true; hyprctl plugin load ]] .. hyprGlassPlugin .. [[ 2>/dev/null || true; hyprctl plugin load ]] .. hyprWindowShadePlugin .. [[ 2>/dev/null || true; hyprctl plugin load ]] .. hyprWobblyPlugin .. [[ 2>/dev/null || true; systemctl --user restart window-shader-events.service; sleep 0.5; hyprctl reload config-only']])
+    hl.exec_cmd([[sh -c 'hyprpm reload 2>/dev/null || true; hyprctl plugin load ]] .. hyprGlassPlugin .. [[ 2>/dev/null || true; hyprctl plugin load ]] .. hyprWindowShadePlugin .. [[ 2>/dev/null || true; systemctl --user restart window-shader-events.service; sleep 0.5; hyprctl reload config-only']])
 end)
 
 hl.on("hyprland.shutdown", function()

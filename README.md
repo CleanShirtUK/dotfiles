@@ -8,7 +8,6 @@ Personal Hyprland and Noctalia configuration.
 - Noctalia
 - `hyprglass` plugin
 - HyprWindowShade plugin, built by `.local/bin/install-hyprwindowshade`
-- HyprWobbly plugin, built from the downloaded source against matching Hyprland headers
 - `bash`, `flock`, `jq`, `socat`, `grim`, `slurp`, and `wl-copy`
 - The separate [`ps3-wave-wallpaper`](https://github.com/CleanShirtUK/ps3-wave-wallpaper) project
 
@@ -54,11 +53,3 @@ build.
 The event listener runs as the user service
 `.config/systemd/user/window-shader-events.service` and is restarted as part
 of the Hyprland startup hook.
-
-HyprWobbly is loaded from
-`~/.local/share/hyprland/plugins/hyprwobbly.so`. Its source currently lives
-outside this repository because it was downloaded from upstream; its build
-needs the Hyprland 0.56 header layout (`render/transformer/Transformer.hpp`,
-`animation/AnimationManager.hpp`, and `output/Monitor.hpp`) and the hyprpm
-header include path. The startup hook loads the resulting plugin after it has
-been built.

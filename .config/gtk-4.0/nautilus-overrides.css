@@ -1,0 +1,119 @@
+/* Persistent overrides; keep generated Noctalia files unchanged. */
+
+:root {
+    --nautilus-window-bg: alpha(@window_bg_color, 0.2);
+    --nautilus-panel-bg: alpha(@view_bg_color, 0.2);
+    --nautilus-sidebar-bg: alpha(@sidebar_bg_color, 0.2);
+    --nautilus-popover-bg: alpha(@popover_bg_color, 0.8);
+}
+
+window,
+window.background,
+.background {
+    background-color: var(--nautilus-window-bg);
+}
+
+window:backdrop,
+window.background:backdrop,
+.background:backdrop,
+.view,
+.view:backdrop,
+.nautilus-network-view,
+.nautilus-network-view:backdrop,
+.nautilus-list-view,
+.nautilus-list-view:backdrop,
+.nautilus-grid-view,
+.nautilus-grid-view:backdrop {
+    background-color: var(--nautilus-panel-bg);
+}
+
+headerbar,
+headerbar:backdrop,
+.titlebar,
+.titlebar:backdrop,
+toolbarview > .top-bar,
+toolbarview > .top-bar:backdrop,
+toolbarview > .top-bar > windowhandle,
+toolbarview > .top-bar > windowhandle:backdrop {
+    background: var(--nautilus-panel-bg);
+    background-color: var(--nautilus-panel-bg);
+    background-image: none;
+    box-shadow: none;
+}
+
+popover,
+popover.menu,
+popover.context-menu,
+popover > arrow,
+popover > contents,
+popover.menu > contents,
+popover.context-menu > contents,
+popover.menu > contents > box,
+popover.menu > contents > stack,
+popover.menu > contents > stack > box,
+popover.menu > contents > list,
+popover.menu > contents > listview,
+popover.menu > contents > scrolledwindow,
+popover.menu > contents > scrolledwindow > viewport,
+popover.menu > contents > scrolledwindow > viewport > list,
+popover.menu > contents > scrolledwindow > viewport > listview {
+    background-color: var(--nautilus-popover-bg);
+    box-shadow: none;
+}
+
+popover.menu,
+popover.context-menu {
+    --popover-bg-color: var(--nautilus-popover-bg);
+    background: var(--nautilus-popover-bg);
+    background-color: var(--nautilus-popover-bg);
+}
+
+popover.menu:backdrop,
+popover.context-menu:backdrop {
+    --popover-bg-color: var(--nautilus-popover-bg);
+    background: var(--nautilus-popover-bg);
+    background-color: var(--nautilus-popover-bg);
+}
+
+popover > contents > box,
+popover > contents > stack,
+popover > contents > stack > box,
+popover > contents > scrolledwindow,
+popover > contents > scrolledwindow > viewport,
+popover > contents > scrolledwindow > viewport > list,
+popover > contents > scrolledwindow > viewport > listview {
+    background: var(--nautilus-popover-bg);
+    background-color: var(--nautilus-popover-bg);
+    box-shadow: none;
+}
+
+popover.menu > contents modelbutton,
+popover.context-menu > contents modelbutton,
+popover.menu > contents list > row,
+popover.context-menu > contents list > row,
+popover.menu > contents listview > row,
+popover.context-menu > contents listview > row {
+    background-color: transparent;
+}
+
+overlay-split-view > widget.sidebar-pane,
+overlay-split-view > widget.sidebar-pane toolbarview,
+overlay-split-view > widget.sidebar-pane .background,
+overlay-split-view > widget.sidebar-pane scrolledwindow,
+overlay-split-view > widget.sidebar-pane viewport,
+overlay-split-view > widget.sidebar-pane list {
+    background-color: var(--nautilus-sidebar-bg);
+}
+
+overlay-split-view > widget.sidebar-pane placesview,
+overlay-split-view > widget.sidebar-pane placesview > scrolledwindow,
+overlay-split-view > widget.sidebar-pane placesview viewport,
+overlay-split-view > widget.sidebar-pane placesview list {
+    background-color: var(--nautilus-sidebar-bg);
+}
+
+overlay-split-view > widget.sidebar-pane:backdrop,
+overlay-split-view > widget.sidebar-pane placesview:backdrop,
+overlay-split-view > widget.sidebar-pane placesview list:backdrop {
+    background-color: var(--nautilus-sidebar-bg);
+}

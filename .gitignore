@@ -1,0 +1,37 @@
+# This is an allow-listed home dotfiles repository. Keep all unlisted home
+# files ignored so credentials, caches, downloads, and application data cannot
+# enter the repository accidentally.
+*
+!.gitignore
+!README.md
+!.config/
+!.config/hypr/
+!.config/hypr/**
+!.config/gtk-3.0/
+!.config/gtk-3.0/gtk.css
+!.config/gtk-3.0/noctalia.css
+!.config/gtk-3.0/settings.ini
+!.config/gtk-4.0/
+!.config/gtk-4.0/gtk.css
+!.config/gtk-4.0/gtk-dark.css
+!.config/gtk-4.0/nautilus-overrides.css
+!.config/gtk-4.0/noctalia.css
+!.config/gtk-4.0/settings.ini
+!.config/kitty/
+!.config/kitty/kitty.conf
+!.config/kitty/themes/
+!.config/kitty/themes/noctalia.conf
+!.config/wezterm/
+!.config/wezterm/wezterm.lua
+!.config/wezterm/colors/
+!.config/wezterm/colors/Noctalia.toml
+!.config/systemd/
+!.config/systemd/user/
+!.config/systemd/user/hyprland-session.target
+!.config/systemd/user/ps3-wave-wallpaper.service
+!.local/share/
+!.local/share/color-schemes/
+!.local/share/color-schemes/noctalia.colors
+!.local/
+!.local/bin/
+!.local/bin/dotfiles-install-wallpaper

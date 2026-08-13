@@ -1,0 +1,12 @@
+[Unit]
+Description=PS3-style cross-monitor shader wallpaper
+PartOf=hyprland-session.target
+After=hyprland-session.target
+
+[Service]
+ExecStart=%h/.local/src/ps3-wave-wallpaper/ps3-wave-wallpaper %h/.local/src/ps3-wave-wallpaper/wave.frag
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=hyprland-session.target

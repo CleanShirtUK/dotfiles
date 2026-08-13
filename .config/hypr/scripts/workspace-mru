@@ -1,0 +1,173 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+action="${1:-next}"
+state_dir="${XDG_RUNTIME_DIR:-/tmp}/hypr-workspace-mru"
+mkdir -p "$state_dir"
+
+active="$(hyprctl activeworkspace -j)"
+monitor="$(jq -r '.monitor' <<<"$active")"
+current="$(jq -r '.id' <<<"$active")"
+
+case "$monitor" in
+    DP-1) min=1; max=5 ;;
+    HDMI-A-1) min=6; max=10 ;;
+    *) exit 0 ;;
+esac
+
+safe_monitor="${monitor//[^A-Za-z0-9_.-]/_}"
+history_file="$state_dir/$safe_monitor.history"
+state_file="$state_dir/$safe_monitor.traversal"
+
+build_default_history() {
+    local value="$current"
+    local workspace
+    for ((workspace = current + 1; workspace <= max; workspace++)); do
+        workspace_has_clients "$workspace" && value+=" $workspace"
+    done
+    for ((workspace = current - 1; workspace >= min; workspace--)); do
+        workspace_has_clients "$workspace" && value+=" $workspace"
+    done
+    printf '%s\n' "$value"
+}
+
+ensure_history() {
+    local history=""
+    [[ -f "$history_file" ]] && history="$(<"$history_file")"
+    [[ -n "$history" ]] || history="$(build_default_history)"
+
+    local -a entries=() filtered=()
+    local found=0 entry
+    read -ra entries <<< "$history"
+    for entry in "${entries[@]}"; do
+        [[ "$entry" =~ ^[0-9]+$ ]] || continue
+        (( entry >= min && entry <= max )) || continue
+        workspace_has_clients "$entry" || continue
+        filtered+=("$entry")
+        [[ "$entry" == "$current" ]] && found=1
+    done
+    if (( ! found )) && workspace_has_clients "$current"; then
+        filtered=("$current" "${filtered[@]}")
+    fi
+    printf '%s\n' "${filtered[*]}" > "$history_file"
+    printf '%s\n' "${filtered[*]}"
+}
+
+show_workspace() {
+    hyprctl dispatch --quiet \
+        "hl.dsp.focus({ workspace = \"$1\" })"
+}
+
+workspace_has_clients() {
+    local workspace="$1"
+    hyprctl clients -j | jq -e --argjson workspace "$workspace" '
+        any(.[]; .mapped and (.hidden | not) and .workspace.id == $workspace)
+    ' >/dev/null
+}
+
+record_workspace() {
+    local record_monitor="$1"
+    local record_workspace="$2"
+    case "$record_monitor" in
+        DP-1) min=1; max=5 ;;
+        HDMI-A-1) min=6; max=10 ;;
+        *) return 0 ;;
+    esac
+    local safe="${record_monitor//[^A-Za-z0-9_.-]/_}"
+    local history_file="$state_dir/$safe.history"
+    [[ -f "$state_dir/$safe.traversal" ]] && return 0
+    local history=""
+    [[ -f "$history_file" ]] && history="$(<"$history_file")"
+    [[ -n "$history" ]] || history="$(current="$record_workspace" build_default_history)"
+    read -ra entries <<< "$history"
+    local -a reordered=("$record_workspace") entry
+    for entry in "${entries[@]}"; do
+        [[ "$entry" == "$record_workspace" ]] || reordered+=("$entry")
+    done
+    printf '%s\n' "${reordered[*]}" > "$history_file"
+}
+
+track() {
+    local socket="$XDG_RUNTIME_DIR/hypr/$HYPRLAND_INSTANCE_SIGNATURE/.socket2.sock"
+    while IFS= read -r event; do
+        case "$event" in
+            workspacev2\>*|focusedmonv2\>*)
+                while IFS=$'\t' read -r name workspace; do
+                    [[ -n "$name" && "$workspace" =~ ^[0-9]+$ ]] || continue
+                    workspace_has_clients "$workspace" || continue
+                    record_workspace "$name" "$workspace"
+                done < <(hyprctl monitors -j | jq -r '.[] | [.name, .activeWorkspace.id] | @tsv')
+                ;;
+        esac
+    done < <(socat -u "UNIX-CONNECT:$socket" - 2>/dev/null)
+}
+
+commit() {
+    [[ -f "$state_file" ]] || exit 0
+
+    mapfile -t state < "$state_file"
+    local state_monitor="${state[0]:-}"
+    local index="${state[1]:-0}"
+    local history="${state[2]:-}"
+    [[ "$state_monitor" == "$monitor" && -n "$history" ]] || exit 0
+
+    local -a entries=($history)
+    local selected="${entries[$index]:-$current}"
+    local reordered=("$selected") entry
+    for entry in "${entries[@]}"; do
+        [[ "$entry" == "$selected" ]] || reordered+=("$entry")
+    done
+    printf '%s\n' "${reordered[*]}" > "$history_file"
+    rm -f "$state_file"
+}
+
+case "$action" in
+    track)
+        track
+        ;;
+    commit)
+        commit
+        ;;
+    next|prev)
+        if [[ -f "$state_file" ]]; then
+            mapfile -t state < "$state_file"
+            if [[ "${state[0]:-}" == "$monitor" ]]; then
+                history="${state[2]:-$(ensure_history)}"
+                index="${state[1]:-0}"
+            else
+        history="$(ensure_history)"
+                index="0"
+            fi
+        else
+            history="$(ensure_history)"
+            index="0"
+            current_index=0
+            read -ra initial_entries <<< "$history"
+            for i in "${!initial_entries[@]}"; do
+                [[ "${initial_entries[$i]}" == "$current" ]] && current_index="$i"
+            done
+            index="$current_index"
+        fi
+
+        read -ra entries <<< "$history"
+        count="${#entries[@]}"
+        (( count > 0 )) || exit 0
+        if [[ "$action" == next ]]; then
+            index=$(( (index + 1) % count ))
+        else
+            index=$(( (index - 1 + count) % count ))
+        fi
+        target="${entries[$index]}"
+        {
+            printf '%s\n' "$monitor"
+            printf '%s\n' "$index"
+            printf '%s\n' "$history"
+        } > "$state_file"
+        workspace_has_clients "$target" || exit 0
+        show_workspace "$target"
+        ;;
+    *)
+        exit 2
+        ;;
+esac

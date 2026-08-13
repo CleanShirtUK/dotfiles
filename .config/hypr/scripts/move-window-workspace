@@ -1,0 +1,27 @@
+#!/bin/sh
+
+set -eu
+
+direction=${1:-}
+case "$direction" in
+    u) step=-1 ;;
+    d) step=1 ;;
+    *) exit 2 ;;
+esac
+
+active=$(hyprctl activewindow -j)
+workspace=$(printf '%s\n' "$active" | jq -r '.workspace.id')
+monitor=$(hyprctl activeworkspace -j | jq -r '.monitor')
+
+case "$monitor" in
+    DP-1) min=1; max=5 ;;
+    HDMI-A-1) min=6; max=10 ;;
+    *) exit 0 ;;
+esac
+
+target=$((workspace + step))
+[ "$target" -ge "$min" ] || exit 0
+[ "$target" -le "$max" ] || exit 0
+
+hyprctl dispatch --quiet "hl.dsp.window.move({ workspace = $target })"
+hyprctl dispatch --quiet "hl.dsp.focus({ workspace = \"$target\" })"

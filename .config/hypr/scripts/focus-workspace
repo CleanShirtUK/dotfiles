@@ -1,0 +1,56 @@
+#!/bin/sh
+
+set -eu
+
+direction=${1:-}
+case "$direction" in
+    u) step=-1; focus_direction=up ;;
+    d) step=1; focus_direction=down ;;
+    *) exit 2 ;;
+esac
+
+active=$(hyprctl activeworkspace -j)
+workspace=$(printf '%s\n' "$active" | jq -r '.id')
+monitor=$(printf '%s\n' "$active" | jq -r '.monitor')
+
+# Hyprland's directional focus wraps at the edge. Check for a window in the
+# requested direction first so the edge can transition to another workspace.
+active_window=$(hyprctl activewindow -j)
+clients=$(hyprctl clients -j)
+has_window=$(jq -n \
+    --arg direction "$focus_direction" \
+    --argjson active "$active_window" \
+    --argjson clients "$clients" '
+    [$clients[]
+        | select(.mapped and (.hidden | not))
+        | select(.workspace.id == $active.workspace.id and .monitor == $active.monitor)
+        | select(.address != $active.address)
+        | ((.at[1] + (.size[1] / 2)) as $center
+            | ($active.at[1] + ($active.size[1] / 2)) as $active_center
+            | select(if $direction == "down" then $center > $active_center else $center < $active_center end))
+    ] | length > 0')
+
+if [ "$has_window" = true ]; then
+    hyprctl dispatch --quiet "hl.dsp.focus({ direction = \"$focus_direction\" })"
+    exit 0
+fi
+
+case "$monitor" in
+    DP-1) min=1; max=5 ;;
+    HDMI-A-1) min=6; max=10 ;;
+    *) exit 0 ;;
+esac
+
+# Wrap at the edge of each monitor's workspace range.
+if [ "$workspace" -eq "$min" ] && [ "$step" -lt 0 ]; then
+    target="$max"
+elif [ "$workspace" -eq "$max" ] && [ "$step" -gt 0 ]; then
+    target="$min"
+else
+    target=$((workspace + step))
+fi
+
+[ "$target" -ge "$min" ] || exit 0
+[ "$target" -le "$max" ] || exit 0
+
+hyprctl dispatch --quiet "hl.dsp.focus({ workspace = \"$target\" })"

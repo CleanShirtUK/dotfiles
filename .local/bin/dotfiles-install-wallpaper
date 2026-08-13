@@ -1,0 +1,20 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+repo_url="${PS3_WAVE_REPO_URL:-git@github.com:CleanShirtUK/ps3-wave-wallpaper.git}"
+repo_dir="${PS3_WAVE_REPO_DIR:-$HOME/.local/src/ps3-wave-wallpaper}"
+ref="${PS3_WAVE_REF:-main}"
+
+if [[ -d "$repo_dir/.git" ]]; then
+    git -C "$repo_dir" fetch --tags origin
+else
+    mkdir -p "$(dirname "$repo_dir")"
+    git clone "$repo_url" "$repo_dir"
+fi
+
+git -C "$repo_dir" fetch --tags origin
+git -C "$repo_dir" checkout "$ref"
+make -C "$repo_dir"
+
+systemctl --user daemon-reload
+systemctl --user enable --now ps3-wave-wallpaper.service

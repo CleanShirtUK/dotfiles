@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+
+declare -A handled
+trap 'exit 0' TERM INT
+
+while sleep 0.2; do
+    while IFS= read -r address; do
+        [[ -n "${address}" && -n "${handled[$address]:-}" ]] && continue
+
+        hyprctl dispatch \
+            "hl.dsp.window.float({ action = \"enable\", window = \"address:${address}\" })" \
+            >/dev/null 2>&1
+        hyprctl dispatch \
+            "hl.dsp.window.resize({ x = 420, y = 650, relative = false, window = \"address:${address}\" })" \
+            >/dev/null 2>&1
+        handled[$address]=1
+     done < <(
+         hyprctl clients -j 2>/dev/null |
+             jq -r '.[] | select(.class == "zen" and (.title | test("Bitwarden"; "i"))) | .address'
+     )
+done

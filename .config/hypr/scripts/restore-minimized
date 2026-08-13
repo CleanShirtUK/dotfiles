@@ -1,0 +1,245 @@
+#!/usr/bin/env bash
+
+set -u
+
+socket="$XDG_RUNTIME_DIR/hypr/$HYPRLAND_INSTANCE_SIGNATURE/.socket2.sock"
+state_dir="${XDG_RUNTIME_DIR}/hypr-minimized"
+log_file="${XDG_RUNTIME_DIR}/hypr-restore-minimized.log"
+
+mkdir -p "$state_dir"
+
+exec 3>>"$log_file"
+
+log() {
+    printf '%s %s\n' "$(date '+%F %T')" "$*" >&3
+}
+
+last_workspace="$(
+    hyprctl activeworkspace -j |
+        jq -r '.name'
+)"
+
+if [[ -z "$last_workspace" || "$last_workspace" == special:* ]]; then
+    last_workspace="1"
+fi
+
+remember_workspace() {
+    local workspace="$1"
+
+    if [[ -n "$workspace" && "$workspace" != special:* ]]; then
+        last_workspace="$workspace"
+        log "Remembered workspace: $last_workspace"
+    fi
+}
+
+get_destination_monitor() {
+    local workspace="$1"
+
+    hyprctl monitors -j |
+        jq --arg workspace "$workspace" '
+            first(
+                .[]
+                | select(.activeWorkspace.name == $workspace)
+            )
+            //
+            first(
+                .[]
+                | select(.focused == true)
+            )
+        '
+}
+
+restore_geometry() {
+    local address="$1"
+    local destination_monitor="$2"
+    local state_file="${state_dir}/${address}"
+
+    if [[ ! -f "$state_file" ]]; then
+        log "No state file for $address"
+        return 0
+    fi
+
+    local floating
+    local relative_x
+    local relative_y
+    local width
+    local height
+
+    floating="$(jq -r '.floating' "$state_file")"
+    relative_x="$(jq -r '.relative_x' "$state_file")"
+    relative_y="$(jq -r '.relative_y' "$state_file")"
+    width="$(jq -r '.width' "$state_file")"
+    height="$(jq -r '.height' "$state_file")"
+
+    local monitor_x
+    local monitor_y
+    local monitor_width
+    local monitor_height
+
+    monitor_x="$(jq -r '.x' <<<"$destination_monitor")"
+    monitor_y="$(jq -r '.y' <<<"$destination_monitor")"
+    monitor_width="$(jq -r '.width' <<<"$destination_monitor")"
+    monitor_height="$(jq -r '.height' <<<"$destination_monitor")"
+
+    if [[ "$monitor_x" == "null" || "$monitor_x" == "" ]]; then
+        log "Could not determine destination monitor for $address"
+        return 1
+    fi
+
+    # Constrain the saved size to the destination monitor.
+    if ((width > monitor_width)); then
+        width="$monitor_width"
+    fi
+
+    if ((height > monitor_height)); then
+        height="$monitor_height"
+    fi
+
+    local target_x=$((monitor_x + relative_x))
+    local target_y=$((monitor_y + relative_y))
+
+    # Keep the restored window wholly visible.
+    if ((target_x + width > monitor_x + monitor_width)); then
+        target_x=$((monitor_x + monitor_width - width))
+    fi
+
+    if ((target_y + height > monitor_y + monitor_height)); then
+        target_y=$((monitor_y + monitor_height - height))
+    fi
+
+    if ((target_x < monitor_x)); then
+        target_x="$monitor_x"
+    fi
+
+    if ((target_y < monitor_y)); then
+        target_y="$monitor_y"
+    fi
+
+    log \
+        "Restoring $address floating=$floating size=${width}x${height} position=${target_x},${target_y}"
+
+    if [[ "$floating" == "true" ]]; then
+        # Float first, then restore its dimensions and position.
+        hyprctl --batch \
+            "dispatch hl.dsp.window.float({ action = \"enable\", window = \"address:${address}\" }); \
+             dispatch hl.dsp.window.resize({ x = ${width}, y = ${height}, relative = false, window = \"address:${address}\" }); \
+             dispatch hl.dsp.window.move({ x = ${target_x}, y = ${target_y}, relative = false, window = \"address:${address}\" })"
+    else
+        hyprctl dispatch \
+            "hl.dsp.window.float({
+                action = \"disable\",
+                window = \"address:${address}\"
+            })"
+    fi
+
+    rm -f "$state_file"
+    log "Restore completed for $address"
+}
+
+restore_window() {
+    local raw_address="$1"
+
+    [[ -z "$raw_address" ]] && return 0
+
+    local address="0x${raw_address#0x}"
+    local window_workspace
+
+    window_workspace="$(
+        hyprctl clients -j |
+            jq -r --arg address "$address" '
+                first(
+                    .[]
+                    | select(.address == $address)
+                    | .workspace.name
+                ) // ""
+            '
+    )"
+
+    [[ "$window_workspace" == "special:minimized" ]] || return 0
+
+    log "Activation detected for minimized window $address"
+    log "Destination workspace is $last_workspace"
+
+    local destination_monitor
+
+    destination_monitor="$(get_destination_monitor "$last_workspace")"
+
+    if [[ -z "$destination_monitor" || "$destination_monitor" == "null" ]]; then
+        log "No destination monitor found for workspace $last_workspace"
+        return 1
+    fi
+
+    hyprctl dispatch \
+        "hl.dsp.window.move({
+            workspace = \"${last_workspace}\",
+            follow = true,
+            window = \"address:${address}\"
+        })"
+
+    # Confirm that Hyprland has completed the workspace move.
+    local attempts=0
+    local current_workspace=""
+
+    while ((attempts < 20)); do
+        current_workspace="$(
+            hyprctl clients -j |
+                jq -r --arg address "$address" '
+                    first(
+                        .[]
+                        | select(.address == $address)
+                        | .workspace.name
+                    ) // ""
+                '
+        )"
+
+        if [[ "$current_workspace" == "$last_workspace" ]]; then
+            break
+        fi
+
+        sleep 0.025
+        attempts=$((attempts + 1))
+    done
+
+    if [[ "$current_workspace" != "$last_workspace" ]]; then
+        log "Window move did not complete: expected=$last_workspace actual=$current_workspace"
+        return 1
+    fi
+
+    restore_geometry "$address" "$destination_monitor"
+
+    hyprctl dispatch \
+        "hl.dsp.focus({
+            window = \"address:${address}\"
+        })"
+}
+
+while IFS= read -r event; do
+    case "$event" in
+        workspacev2\>\>*)
+            data="${event#workspacev2>>}"
+            workspace_name="${data#*,}"
+            remember_workspace "$workspace_name"
+            ;;
+
+        workspace\>\>*)
+            workspace_name="${event#workspace>>}"
+            remember_workspace "$workspace_name"
+            ;;
+
+        focusedmon\>\>*)
+            data="${event#focusedmon>>}"
+            workspace_name="${data#*,}"
+            remember_workspace "$workspace_name"
+            ;;
+
+        activewindowv2\>\>*)
+            address="${event#activewindowv2>>}"
+
+            [[ -n "$address" ]] || continue
+
+            restore_window "$address"
+            ;;
+    esac
+done < <(
+    socat -u "UNIX-CONNECT:$socket" -
+)

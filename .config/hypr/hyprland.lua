@@ -10,7 +10,6 @@ local launcher = "noctalia msg panel-toggle launcher"
 local scripts = home .. "/.config/hypr/scripts"
 local moveWindowWorkspace = scripts .. "/move-window-workspace"
 local focusWorkspace = scripts .. "/focus-workspace"
-local hyprshellStart = scripts .. "/hyprshell-start"
 local mainMod = "SUPER"
 local hyprGlassPlugin = home .. "/.local/share/hyprland/plugins/hyprglass.so"
 
@@ -32,7 +31,7 @@ hl.on("hyprland.start", function()
     hl.exec_cmd(scripts .. "/restore-minimized")
     hl.exec_cmd(scripts .. "/float-bitwarden-popup &")
     hl.exec_cmd(scripts .. "/dynamic-app-workspaces &")
-    hl.exec_cmd(hyprshellStart .. " &")
+    hl.exec_cmd("systemctl --user restart hyprshell.service")
     hl.exec_cmd("dbus-update-activation-environment --systemd --all")
     hl.exec_cmd("systemctl --user import-environment WAYLAND_DISPLAY XDG_CURRENT_DESKTOP HYPRLAND_INSTANCE_SIGNATURE QT_QPA_PLATFORMTHEME")
     hl.exec_cmd("systemctl --user start hyprland-session.target")

@@ -21,6 +21,8 @@ child windows to that workspace. Empty nonpersistent workspaces are removed
 by Hyprland. Hyprshell provides the Alt+Tab switcher and selects workspaces on
 the current monitor using its live Hyprland integration.
 
-Hyprshell is launched by `.config/hypr/scripts/hyprshell-start` and uses the
-tracked configuration in `.config/hyprshell/`. Its stylesheet imports the
-Noctalia GTK4 palette from `.config/gtk-4.0/noctalia.css`.
+Hyprshell is managed by the user service
+`.config/systemd/user/hyprshell.service`, which runs
+`.config/hypr/scripts/hyprshell-start` with automatic restart-on-failure. The
+tracked configuration is in `.config/hyprshell/`, and its stylesheet imports
+the Noctalia GTK4 palette from `.config/gtk-4.0/noctalia.css`.

@@ -16,6 +16,10 @@
     color: @accent_color;
 }
 
+.monitor {
+    box-shadow: none;
+}
+
 .workspace,
 .client {
     font-size: 12px;

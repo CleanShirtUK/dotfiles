@@ -255,6 +255,7 @@ for _, class in ipairs({
     "^com\\.rustdesk\\.RustDesk$",
     "^net\\.davidotek\\.pupgui2$",
     "^dev\\.noctalia\\.Noctalia$",
+    "^xdg-desktop-portal-gtk$",
     }) do
     hl.window_rule({
         name = "float-utility-" .. class,
@@ -263,6 +264,12 @@ for _, class in ipairs({
         center = true,
     })
 end
+
+hl.window_rule({
+    name = "constrain-gtk-file-chooser",
+    match = { class = "^xdg-desktop-portal-gtk$" },
+    max_size = { 1248, 700 },
+})
 
 hl.window_rule({
     name = "float-dolphin",

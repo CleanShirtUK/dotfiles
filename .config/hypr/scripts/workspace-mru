@@ -33,13 +33,19 @@ ensure_history() {
     read -ra entries <<< "$history"
     for entry in "${entries[@]}"; do
         [[ "$entry" =~ ^[0-9]+$ ]] || continue
-        hyprctl workspaces -j | jq -e --arg monitor "$monitor" --argjson workspace "$entry" \
-            'any(.[]; .monitor == $monitor and .id == $workspace)' >/dev/null || continue
-        workspace_has_clients "$entry" || continue
+        workspace_exists_on_monitor "$entry" || continue
         filtered+=("$entry")
         [[ "$entry" == "$current" ]] && found=1
     done
-    if (( ! found )) && workspace_has_clients "$current"; then
+
+    # Dynamic workspaces remove empty nonpersistent workspaces, but the
+    # persistent landing workspace remains empty and must stay in the loop.
+    while IFS= read -r entry; do
+        [[ "$entry" =~ ^[0-9]+$ ]] || continue
+        [[ " ${filtered[*]} " == *" $entry "* ]] || filtered+=("$entry")
+    done < <(hyprctl workspaces -j | jq -r --arg monitor "$monitor" '.[] | select(.monitor == $monitor) | .id' | sort -n)
+
+    if (( ! found )) && workspace_exists_on_monitor "$current" && [[ " ${filtered[*]} " != *" $current "* ]]; then
         filtered=("$current" "${filtered[@]}")
     fi
     printf '%s\n' "${filtered[*]}" > "$history_file"
@@ -56,6 +62,12 @@ workspace_has_clients() {
     hyprctl clients -j | jq -e --argjson workspace "$workspace" '
         any(.[]; .mapped and (.hidden | not) and .workspace.id == $workspace)
     ' >/dev/null
+}
+
+workspace_exists_on_monitor() {
+    local workspace="$1"
+    hyprctl workspaces -j | jq -e --arg monitor "$monitor" --argjson workspace "$workspace" \
+        'any(.[]; .monitor == $monitor and .id == $workspace)' >/dev/null
 }
 
 record_workspace() {
@@ -76,6 +88,8 @@ record_workspace() {
 }
 
 track() {
+    exec 7>"$state_dir/track.lock"
+    flock -n 7 || exit 0
     local socket="$XDG_RUNTIME_DIR/hypr/$HYPRLAND_INSTANCE_SIGNATURE/.socket2.sock"
     while IFS= read -r event; do
         case "$event" in
@@ -91,22 +105,35 @@ track() {
 }
 
 commit() {
+    local keep_traversal="${2:-}"
+    if [[ ! -f "$state_file" ]]; then
+        for candidate in "$state_dir"/*.traversal; do
+            [[ -f "$candidate" ]] || continue
+            state_file="$candidate"
+            break
+        done
+    fi
     [[ -f "$state_file" ]] || exit 0
 
     mapfile -t state < "$state_file"
     local state_monitor="${state[0]:-}"
     local index="${state[1]:-0}"
     local history="${state[2]:-}"
-    [[ "$state_monitor" == "$monitor" && -n "$history" ]] || exit 0
+    if [[ -z "$state_monitor" || -z "$history" ]]; then
+        rm -f "$state_file"
+        exit 0
+    fi
 
+    local safe_state_monitor="${state_monitor//[^A-Za-z0-9_.-]/_}"
+    local state_history_file="$state_dir/$safe_state_monitor.history"
     local -a entries=($history)
     local selected="${entries[$index]:-$current}"
     local reordered=("$selected") entry
     for entry in "${entries[@]}"; do
         [[ "$entry" == "$selected" ]] || reordered+=("$entry")
     done
-    printf '%s\n' "${reordered[*]}" > "$history_file"
-    rm -f "$state_file"
+    printf '%s\n' "${reordered[*]}" > "$state_history_file"
+    [[ "$keep_traversal" == keep ]] || rm -f "$state_file"
 }
 
 case "$action" in
@@ -116,19 +143,18 @@ case "$action" in
     commit)
         commit
         ;;
-    next|prev)
+next|prev)
         if [[ -f "$state_file" ]]; then
             mapfile -t state < "$state_file"
             if [[ "${state[0]:-}" == "$monitor" ]]; then
                 history="${state[2]:-$(ensure_history)}"
                 index="${state[1]:-0}"
             else
-        history="$(ensure_history)"
+                history="$(ensure_history)"
                 index="0"
             fi
         else
             history="$(ensure_history)"
-            index="0"
             current_index=0
             read -ra initial_entries <<< "$history"
             for i in "${!initial_entries[@]}"; do
@@ -151,7 +177,7 @@ case "$action" in
             printf '%s\n' "$index"
             printf '%s\n' "$history"
         } > "$state_file"
-        workspace_has_clients "$target" || exit 0
+        workspace_exists_on_monitor "$target" || exit 0
         show_workspace "$target"
         ;;
     *)

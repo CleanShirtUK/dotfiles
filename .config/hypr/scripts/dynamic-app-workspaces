@@ -70,9 +70,33 @@ route_window() {
     monitor="$(monitor_name "$(jq -r '.monitor' <<<"$client")")"
     reserved="$(reserved_workspace "$monitor")"
 
+    # Steam menus and notifications use the same class as the main client but
+    # are transient floating surfaces. Keep them with Steam instead of giving
+    # each one a dynamic application workspace.
+    if [[ "$class" == steam ]]; then
+        if [[ "$(jq -r '.floating' <<<"$client")" == true ]]; then
+            workspace="$(client_json | jq -r --argjson pid "$pid" \
+                'first(.[] | select(.class == "steam" and .pid == $pid and (.floating | not)) | .workspace.name) // empty')"
+            if [[ -n "$workspace" && "$current_workspace" != "$workspace" ]]; then
+                hyprctl dispatch --quiet \
+                    "hl.dsp.window.move({ workspace = \"$workspace\", window = \"address:0x${address#0x}\" })" \
+                    >/dev/null 2>&1
+            fi
+            return 0
+        fi
+        printf 'class=%s\nworkspace=%s\n' "$class" "$current_workspace" > "$state_dir/$pid"
+    fi
+
+    # Steam's transient surfaces can be reported as tiled briefly while they
+    # map. Reuse the main Steam process workspace before landing-workspace
+    # relocation runs, so that race cannot allocate a new workspace.
+    if [[ "$class" == steam && -f "$state_dir/$pid" ]]; then
+        workspace="$(find_workspace_for_pid "$pid" || true)"
+    fi
+
     # Persistent landing workspaces stay visibly empty. Any new window that
     # lands there is given a fresh dynamic workspace immediately.
-    if [[ -n "$reserved" && "$current_workspace" == "$reserved" ]]; then
+    if [[ -z "$workspace" && -n "$reserved" && "$current_workspace" == "$reserved" ]]; then
         hyprctl dispatch --quiet \
             "hl.dsp.window.move({ workspace = \"emptynm\", window = \"address:0x${address#0x}\" })" \
             >/dev/null 2>&1

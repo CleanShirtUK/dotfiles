@@ -1,0 +1,12 @@
+[Unit]
+Description=LocalSend background file-sharing service
+PartOf=hyprland-session.target
+After=hyprland-session.target
+
+[Service]
+ExecStart=/usr/bin/flatpak run org.localsend.localsend_app --hidden
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=hyprland-session.target

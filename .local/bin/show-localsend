@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+readonly app_id='org.localsend.localsend_app'
+
+if ! systemctl --user is-active --quiet localsend.service; then
+    printf 'LocalSend is not running. Start it with: systemctl --user start localsend.service\n' >&2
+    exit 1
+fi
+
+declare -a session_environment=()
+while IFS= read -r variable; do
+    [[ "$variable" == *=* ]] || continue
+    case "$variable" in
+        DISPLAY=*|WAYLAND_DISPLAY=*|XDG_CURRENT_DESKTOP=*|XDG_RUNTIME_DIR=*|DBUS_SESSION_BUS_ADDRESS=*|HYPRLAND_INSTANCE_SIGNATURE=*)
+            session_environment+=("$variable")
+            ;;
+    esac
+done < <(systemctl --user show-environment)
+
+env "${session_environment[@]}" flatpak run "$app_id" >/dev/null 2>&1 &
+printf 'Requested the LocalSend window.\n'

@@ -34,6 +34,7 @@
 !.config/systemd/user/ps3-wave-wallpaper.service
 !.config/systemd/user/hyprshell.service
 !.config/systemd/user/window-shader-events.service
+!.config/systemd/user/localsend.service
 !.local/share/
 !.local/share/color-schemes/
 !.local/share/color-schemes/noctalia.colors
@@ -41,3 +42,6 @@
 !.local/bin/
 !.local/bin/dotfiles-install-wallpaper
 !.local/bin/install-hyprwindowshade
+!.local/bin/configure-localsend
+!.local/bin/configure-localsend-firewall
+!.local/bin/show-localsend

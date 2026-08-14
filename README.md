@@ -9,6 +9,7 @@ Personal Hyprland and Noctalia configuration.
 - `hyprglass` plugin
 - HyprWindowShade plugin, built by `.local/bin/install-hyprwindowshade`
 - `bash`, `flock`, `jq`, `socat`, `grim`, `slurp`, and `wl-copy`
+- LocalSend, installed system-wide from Flathub as `org.localsend.localsend_app`
 - The separate [`ps3-wave-wallpaper`](https://github.com/CleanShirtUK/ps3-wave-wallpaper) project
 
 The wallpaper project is installed and built by
@@ -53,3 +54,45 @@ build.
 The event listener runs as the user service
 `.config/systemd/user/window-shader-events.service` and is restarted as part
 of the Hyprland startup hook.
+
+## LocalSend
+
+Install LocalSend system-wide with:
+
+```sh
+sudo flatpak install --system flathub org.localsend.localsend_app
+```
+
+The application-menu entry is provided by Flatpak. LocalSend is started hidden
+by Hyprland because its GUI process owns both discovery and the transfer
+server; there is no separate daemon to launch. Its network service uses TCP and
+UDP port `53317`.
+
+After launching LocalSend once, set this machine's advertised device name with:
+
+```sh
+.local/bin/configure-localsend
+```
+
+The helper updates only LocalSend's alias in its Flatpak preferences and leaves
+its generated security keys unchanged. It requires `jq`, which is already a
+dotfiles dependency.
+
+Hyprland starts LocalSend hidden through
+`.config/systemd/user/localsend.service`, so the device remains discoverable
+without opening a tiled window. Allow LocalSend through the active Fedora
+firewall zone with:
+
+```sh
+.local/bin/configure-localsend-firewall
+```
+
+The helper prompts for the sudo password in the current SSH terminal and is
+safe to run repeatedly.
+
+When a transfer needs approval, show the existing hidden LocalSend window with
+this SSH-safe command:
+
+```sh
+.local/bin/show-localsend
+```

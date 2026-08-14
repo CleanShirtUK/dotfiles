@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+readonly zone='public'
+readonly port='53317'
+
+if ! command -v firewall-cmd >/dev/null 2>&1; then
+    printf 'firewall-cmd was not found. Install firewalld first.\n' >&2
+    exit 1
+fi
+
+sudo -v
+
+if ! firewall-cmd --state >/dev/null 2>&1; then
+    printf 'Starting and enabling firewalld...\n'
+    sudo systemctl enable --now firewalld.service
+fi
+
+sudo firewall-cmd --permanent --zone="$zone" --add-port="$port/tcp"
+sudo firewall-cmd --permanent --zone="$zone" --add-port="$port/udp"
+sudo firewall-cmd --reload
+
+printf 'LocalSend firewall rules in zone %s:\n' "$zone"
+sudo firewall-cmd --zone="$zone" --list-ports

@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+readonly app_id='org.localsend.localsend_app'
+readonly settings_file="${FLATPAK_USER_DIR:-$HOME/.var/app}/$app_id/data/org.localsend.localsend_app/shared_preferences.json"
+
+if [[ ! -f "$settings_file" ]]; then
+    printf 'LocalSend settings were not found: %s\n' "$settings_file" >&2
+    printf 'Launch LocalSend once before running this command.\n' >&2
+    exit 1
+fi
+
+tmp_file=$(mktemp "${settings_file}.tmp.XXXXXX")
+trap 'rm -f "$tmp_file"' EXIT
+
+jq '."flutter.ls_alias" = "phleg"' "$settings_file" >"$tmp_file"
+chmod --reference="$settings_file" "$tmp_file"
+mv "$tmp_file" "$settings_file"
+trap - EXIT
+
+printf 'LocalSend device name set to phleg.\n'

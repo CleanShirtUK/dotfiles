@@ -4,7 +4,7 @@ Personal Hyprland and Noctalia configuration.
 
 ## Dependencies
 
-- Hyprland, Hypridle, and Hyprlock
+- Hyprland and Hypridle
 - Noctalia
 - `hyprglass` plugin
 - HyprWindowShade plugin, built by `.local/bin/install-hyprwindowshade`
@@ -12,7 +12,7 @@ Personal Hyprland and Noctalia configuration.
 - LocalSend, installed system-wide from Flathub as `org.localsend.localsend_app`
 - GPU Screen Recorder, installed system-wide from Flathub as
   `com.dec05eba.gpu_screen_recorder`
-- The separate [`ps3-wave-wallpaper`](https://github.com/CleanShirtUK/ps3-wave-wallpaper) project
+- The separate [`ps3-wave-wallpaper`](https://github.com/CleanShirtUK/ps3-wave-wallpaper) project, running in live-wallpaper-only mode
 
 The wallpaper project is installed and built by
 allow-listed through `.gitignore`; only reviewed configuration files are

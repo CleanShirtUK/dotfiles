@@ -85,6 +85,7 @@ hl.config({
         rounding_power = 2,
         active_opacity = 0.95,
         inactive_opacity = 0.9,
+        blur = { new_optimizations = true },
         shadow = { enabled = true, range = 2, render_power = 5, color = 0xee1a1a1a },
     },
 
@@ -326,6 +327,13 @@ hl.window_rule({
 hl.window_rule({
     name = "float-obsidian-settings",
     match = { title = "^Settings.*$" },
+    float = true,
+    center = true,
+})
+
+hl.window_rule({
+    name = "float-keyring-prompter",
+    match = { class = "^gcr-prompter$" },
     float = true,
     center = true,
 })

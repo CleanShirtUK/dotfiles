@@ -8,6 +8,7 @@ focus_shader="$HOME/.config/hypr/shaders/focus-ripple.glsl"
 wezterm_shader="$HOME/.config/hypr/shaders/wezterm-ripple.glsl"
 focus_wezterm_shader="$HOME/.config/hypr/shaders/focus-wezterm-ripple.glsl"
 state_dir="${XDG_RUNTIME_DIR}/hypr-window-shader"
+game_mode_flag="${XDG_RUNTIME_DIR}/hypr-game-mode.active"
 lock_file="$state_dir/daemon.lock"
 active_windows="$state_dir/active-windows"
 focused_window="$state_dir/focused-window"
@@ -32,6 +33,7 @@ set_window_shader() {
     address="$1"
     path="$2"
     [[ -n "$address" ]] || return 0
+    [[ "$path" == clear || ! -e "$game_mode_flag" ]] || return 0
     [[ "$address" == 0x* ]] || address="0x$address"
     lua_address="\"$address\""
     lua_path="\"$path\""

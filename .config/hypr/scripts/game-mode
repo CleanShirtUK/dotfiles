@@ -3,6 +3,7 @@
 set -u
 
 readonly wallpaper_control="${HOME}/.cache/ps3-wave-wallpaper/control"
+readonly game_mode_flag="${XDG_RUNTIME_DIR}/hypr-game-mode.active"
 gamemode_pid=""
 in_game=0
 
@@ -10,6 +11,25 @@ wallpaper_animation() {
     local command="$1"
     [[ -p "$wallpaper_control" ]] || return 0
     timeout 1s sh -c 'printf "%s\n" "$1" > "$2"' sh "$command" "$wallpaper_control" 2>/dev/null || true
+}
+
+clear_window_effects() {
+    timeout 1s hyprctl clients -j 2>/dev/null |
+        jq -r '.[].address' |
+        while IFS= read -r address; do
+            [[ -n "$address" ]] || continue
+            hyprctl eval "hl.plugin.HyprWindowShade.togglewindowshader(\"$address\", \"clear\")" >/dev/null 2>&1 || true
+        done
+}
+
+disable_desktop_effects() {
+    : > "$game_mode_flag"
+    clear_window_effects
+}
+
+restore_desktop_effects() {
+    [[ -e "$game_mode_flag" ]] || return 0
+    rm -f "$game_mode_flag"
 }
 
 game_mode_active() {
@@ -30,6 +50,7 @@ hold_game_mode() {
 
 enter_game_mode() {
     hold_game_mode
+    disable_desktop_effects
     wallpaper_animation exit
     in_game=1
 }
@@ -40,6 +61,7 @@ leave_game_mode() {
         wait "$gamemode_pid" 2>/dev/null || true
         gamemode_pid=""
     fi
+    restore_desktop_effects
     wallpaper_animation intro
     in_game=0
 }
@@ -48,8 +70,12 @@ cleanup() {
     if [[ -n "$gamemode_pid" ]]; then
         kill -- "-$gamemode_pid" 2>/dev/null || true
     fi
+    restore_desktop_effects
 }
 trap cleanup EXIT INT TERM
+
+# Do not inherit stale runtime state after a service restart.
+rm -f "$game_mode_flag"
 
 while :; do
     has_game="$(timeout 1s hyprctl clients -j 2>/dev/null | jq -r 'any(.[]; (.class // "") | test("^steam_app_"))' 2>/dev/null || printf 'false')"

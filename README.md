@@ -16,6 +16,8 @@ Personal Hyprland and Noctalia configuration.
 - The separate [`ps3-wave-wallpaper`](https://github.com/CleanShirtUK/ps3-wave-wallpaper) project, running in live-wallpaper-only mode
 - GameMode, with `gamemoded` and `gamemoderun` available
 - The `adw-gtk3-dark` GTK theme and `kora` icon theme
+- Actions For Nautilus `v2.0.1`, installed by
+  `.local/bin/install-actions-for-nautilus`
 
 Zen Browser customization is installed with:
 
@@ -29,6 +31,25 @@ adds one marker-managed import to `chrome/userChrome.css`. It preserves other
 profile CSS and is safe to run repeatedly. The override makes only Zen's
 application sidebar transparent; browser content and popup menus remain
 opaque.
+
+## Nautilus Actions
+
+Actions For Nautilus adds these top-level Nautilus context-menu actions:
+
+- **Open as Administrator** opens files and directories through GVfs' native
+  `admin://` backend and Polkit. It does not run Nautilus as root.
+- **Copy Path** copies selected filesystem paths with `wl-copy`.
+
+Install the pinned upstream extension and tracked configuration with:
+
+```sh
+.local/bin/install-actions-for-nautilus
+```
+
+The installer verifies upstream tag `v2.0.1` against commit
+`3b518ac02fe92f8f0a4733e799b0689f505fea95` before installing it for the current
+user. Fedora dependencies are `nautilus-python`, `python3-gobject`,
+`procps-ng`, and `js-jquery`.
 
 GTK shadow handling is kept in the tracked `.config/gtk-3.0/shadow-overrides.css`
 and `.config/gtk-4.0/shadow-overrides.css` files. They remove GTK-rendered

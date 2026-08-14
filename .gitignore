@@ -24,6 +24,8 @@
 !.config/gtk-4.0/settings.ini
 !.config/zen/
 !.config/zen/phleg-userChrome.css
+!.config/actions-for-nautilus/
+!.config/actions-for-nautilus/config.json
 !.config/kitty/
 !.config/kitty/kitty.conf
 !.config/kitty/themes/
@@ -63,3 +65,6 @@
 !.local/bin/configure-mission-center
 !.local/bin/play-session-sound
 !.local/bin/configure-zen
+!.local/bin/install-actions-for-nautilus
+!.local/bin/nautilus-open-as-admin
+!.local/bin/nautilus-copy-path

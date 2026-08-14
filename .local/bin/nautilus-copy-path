@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+if [[ "$#" -eq 0 ]]; then
+    printf 'Usage: %s PATH...\n' "$0" >&2
+    exit 2
+fi
+
+command -v wl-copy >/dev/null 2>&1 || {
+    printf 'wl-copy is required to copy paths.\n' >&2
+    exit 1
+}
+
+printf '%s\n' "$@" | wl-copy

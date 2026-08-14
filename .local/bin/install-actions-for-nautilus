@@ -1,0 +1,46 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+readonly repo_url='https://github.com/bassmanitram/actions-for-nautilus.git'
+readonly repo_ref='v2.0.1'
+readonly repo_commit='3b518ac02fe92f8f0a4733e799b0689f505fea95'
+readonly repo_dir="${ACTIONS_FOR_NAUTILUS_SOURCE_DIR:-$HOME/.local/src/actions-for-nautilus}"
+readonly tracked_config="$HOME/.config/actions-for-nautilus/config.json"
+readonly installed_config="$HOME/.local/share/actions-for-nautilus/config.json"
+
+for command in git make python3 nautilus; do
+    command -v "$command" >/dev/null 2>&1 || {
+        printf '%s is required but was not found.\n' "$command" >&2
+        exit 1
+    }
+done
+
+if ! python3 -c 'import gi' >/dev/null 2>&1 || [[ ! -f /usr/lib64/nautilus/extensions-4/libnautilus-python.so ]]; then
+    printf 'Fedora dependencies are missing. Install them with:\n' >&2
+    printf '  sudo dnf install nautilus-python python3-gobject procps-ng js-jquery\n' >&2
+    exit 1
+fi
+
+if [[ -d "$repo_dir/.git" ]]; then
+    git -C "$repo_dir" fetch --tags --force origin "$repo_ref"
+else
+    mkdir -p "$(dirname "$repo_dir")"
+    git clone --branch "$repo_ref" --depth 1 "$repo_url" "$repo_dir"
+fi
+
+git -C "$repo_dir" checkout --detach "$repo_ref" >/dev/null
+actual_commit=$(git -C "$repo_dir" rev-parse HEAD)
+if [[ "$actual_commit" != "$repo_commit" ]]; then
+    printf 'Unexpected Actions For Nautilus revision: %s\n' "$actual_commit" >&2
+    printf 'Expected: %s\n' "$repo_commit" >&2
+    exit 1
+fi
+
+make -C "$repo_dir" install
+mkdir -p "$(dirname "$installed_config")"
+install -m 0644 "$tracked_config" "$installed_config"
+nautilus -q >/dev/null 2>&1 || true
+
+printf 'Actions For Nautilus %s is installed and configured.\n' "$repo_ref"
+printf 'Restart Nautilus if it does not show the new context-menu actions.\n'

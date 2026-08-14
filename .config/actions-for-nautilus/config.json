@@ -1,0 +1,20 @@
+{
+  "actions": [
+    {
+      "type": "command",
+      "label": "Open as Administrator",
+      "command_line": "sh -c 'exec \"$HOME/.local/bin/nautilus-open-as-admin\" \"$@\"' nautilus-open-as-admin %F",
+      "use_v1_interpolation": false,
+      "use_shell": true
+    },
+    {
+      "type": "command",
+      "label": "Copy Path",
+      "command_line": "sh -c 'exec \"$HOME/.local/bin/nautilus-copy-path\" \"$@\"' nautilus-copy-path %F",
+      "use_v1_interpolation": false,
+      "use_shell": true
+    }
+  ],
+  "sort": "manual",
+  "debug": false
+}

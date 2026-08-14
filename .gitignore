@@ -32,6 +32,7 @@
 !.config/systemd/user/
 !.config/systemd/user/hyprland-session.target
 !.config/systemd/user/ps3-wave-wallpaper.service
+!.config/systemd/user/noctalia.service
 !.config/systemd/user/hyprshell.service
 !.config/systemd/user/window-shader-events.service
 !.config/systemd/user/localsend.service

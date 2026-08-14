@@ -1,0 +1,14 @@
+[Unit]
+Description=Noctalia Shell
+PartOf=hyprland-session.target
+After=hyprland-session.target
+StartLimitIntervalSec=60
+StartLimitBurst=5
+
+[Service]
+ExecStart=/usr/bin/noctalia
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=hyprland-session.target

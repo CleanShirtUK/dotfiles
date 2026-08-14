@@ -10,6 +10,8 @@ Personal Hyprland and Noctalia configuration.
 - HyprWindowShade plugin, built by `.local/bin/install-hyprwindowshade`
 - `bash`, `flock`, `jq`, `socat`, `grim`, `slurp`, and `wl-copy`
 - LocalSend, installed system-wide from Flathub as `org.localsend.localsend_app`
+- GPU Screen Recorder, installed system-wide from Flathub as
+  `com.dec05eba.gpu_screen_recorder`
 - The separate [`ps3-wave-wallpaper`](https://github.com/CleanShirtUK/ps3-wave-wallpaper) project
 
 The wallpaper project is installed and built by
@@ -28,6 +30,31 @@ Hyprshell is managed by the user service
 `.config/hypr/scripts/hyprshell-start` with automatic restart-on-failure. The
 tracked configuration is in `.config/hyprshell/`, and its stylesheet imports
 the Noctalia GTK4 palette from `.config/gtk-4.0/noctalia.css`.
+
+## GPU Screen Recorder
+
+Install GPU Screen Recorder system-wide from Flathub:
+
+```sh
+.local/bin/install-gpu-screen-recorder
+```
+
+The `.local/bin/gpu-screen-recorder-control` helper starts one recorder on the
+currently active Hyprland monitor, captures desktop output audio only, and
+maintains a five-minute replay buffer. Recordings are saved under
+`~/Videos/ScreenCap`.
+
+- `SUPER + SHIFT + R` toggles a normal recording.
+- `SUPER + SHIFT + Z` saves the previous five minutes as an instant replay.
+
+The helper can also be controlled over SSH:
+
+```sh
+.local/bin/gpu-screen-recorder-control start
+.local/bin/gpu-screen-recorder-control stop
+```
+
+The recorder log is written to `~/Videos/ScreenCap/gpu-screen-recorder.log`.
 
 HyprWindowShade is pinned to upstream commit
 `40b756befa36cfd5cbed65d554c719141a65c420`. Run

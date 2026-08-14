@@ -1,0 +1,78 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+readonly app_id='com.dec05eba.gpu_screen_recorder'
+readonly socket_path="${XDG_RUNTIME_DIR:?}/gpu-screen-recorder.sock"
+readonly output_dir="${HOME}/Videos/ScreenCap"
+readonly replay_dir="${output_dir}/replays"
+readonly recording_dir="${output_dir}/recordings"
+readonly monitor_file="${XDG_RUNTIME_DIR}/gpu-screen-recorder.monitor"
+
+gsr() {
+    flatpak run --command=gpu-screen-recorder "$app_id" "$@"
+}
+
+gsr_cli() {
+    flatpak run --command=gsr-cli "$app_id" -ipc "$socket_path" "$@"
+}
+
+active_monitor() {
+    hyprctl activeworkspace -j | jq -r '.monitor // empty'
+}
+
+running() {
+    gsr_cli status >/dev/null 2>&1
+}
+
+start() {
+    local monitor
+    monitor="$(active_monitor)"
+    [[ -n "$monitor" ]] || {
+        printf 'Unable to determine the active Hyprland monitor.\n' >&2
+        exit 1
+    }
+
+    mkdir -p "$replay_dir" "$recording_dir"
+    printf '%s\n' "$monitor" >"$monitor_file"
+
+    setsid flatpak run --command=gpu-screen-recorder "$app_id" \
+        -w "$monitor" \
+        -f 60 \
+        -a default_output \
+        -c mp4 \
+        -r 300 \
+        -o "$replay_dir" \
+        -ro "$recording_dir" \
+        -ipc "$socket_path" \
+        </dev/null >>"$output_dir/gpu-screen-recorder.log" 2>&1 &
+
+    for _ in {1..30}; do
+        running && return 0
+        sleep 0.1
+    done
+
+    printf 'GPU Screen Recorder did not start. See %s.\n' "$output_dir/gpu-screen-recorder.log" >&2
+    exit 1
+}
+
+case "${1:-}" in
+    toggle)
+        running || start
+        gsr_cli toggle-replay-recording
+        ;;
+    replay)
+        running || start
+        gsr_cli save-replay 300
+        ;;
+    stop)
+        running && gsr_cli stop || true
+        ;;
+    start)
+        running || start
+        ;;
+    *)
+        printf 'Usage: %s {toggle|replay|stop|start}\n' "${0##*/}" >&2
+        exit 2
+        ;;
+esac

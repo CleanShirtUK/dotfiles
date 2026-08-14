@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+readonly app_id='com.dec05eba.gpu_screen_recorder'
+readonly flathub_url='https://dl.flathub.org/repo/flathub.flatpakrepo'
+
+command -v flatpak >/dev/null 2>&1 || {
+    printf 'Flatpak is required but was not found.\n' >&2
+    exit 1
+}
+
+if ! flatpak remotes --system --columns=name | grep -qx 'flathub'; then
+    sudo flatpak remote-add --if-not-exists --system flathub "$flathub_url"
+fi
+
+sudo flatpak install --system --assumeyes flathub "$app_id"
+
+flatpak run --command=gpu-screen-recorder "$app_id" --help >/dev/null
+flatpak run --command=gsr-cli "$app_id" --help >/dev/null
+
+printf 'GPU Screen Recorder is installed and its command-line tools are available.\n'

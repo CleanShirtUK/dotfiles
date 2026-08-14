@@ -45,3 +45,5 @@
 !.local/bin/configure-localsend
 !.local/bin/configure-localsend-firewall
 !.local/bin/show-localsend
+!.local/bin/gpu-screen-recorder-control
+!.local/bin/install-gpu-screen-recorder

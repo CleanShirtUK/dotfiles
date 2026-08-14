@@ -8,6 +8,7 @@ local terminal = "wezterm"
 local fileManager = "nautilus"
 local launcher = "noctalia msg panel-toggle launcher"
 local scripts = home .. "/.config/hypr/scripts"
+local gpuScreenRecorder = home .. "/.local/bin/gpu-screen-recorder-control"
 local moveWindowWorkspace = scripts .. "/move-window-workspace"
 local focusWorkspace = scripts .. "/focus-workspace"
 local mainMod = "SUPER"
@@ -172,6 +173,8 @@ hl.bind(mainMod .. " + L", hl.dsp.exec_cmd("loginctl lock-session"))
 hl.bind(mainMod .. " + M", hl.dsp.exec_cmd([[command -v hyprshutdown >/dev/null 2>&1 && hyprshutdown || hyprctl dispatch 'hl.dsp.exit()']]))
 hl.bind("ALT + Return", hl.dsp.window.fullscreen({ mode = "fullscreen", action = "toggle" }))
 hl.bind(mainMod .. " + SHIFT + S", hl.dsp.exec_cmd([[grim -g "$(slurp)" - | wl-copy --type image/png]]))
+hl.bind(mainMod .. " + SHIFT + R", hl.dsp.exec_cmd(gpuScreenRecorder .. " toggle"))
+hl.bind(mainMod .. " + SHIFT + Z", hl.dsp.exec_cmd(gpuScreenRecorder .. " replay"))
 hl.bind("CTRL + SHIFT + Escape", hl.dsp.exec_cmd("flatpak run io.missioncenter.MissionCenter"))
 
 -- Focus windows horizontally. The monitor fallback lets focus continue

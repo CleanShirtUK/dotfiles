@@ -8,12 +8,29 @@ readonly replay_socket_path="${XDG_RUNTIME_DIR:?}/gpu-screen-recorder-replay.soc
 readonly output_dir="${HOME}/Videos/ScreenCap"
 readonly replay_dir="${output_dir}/replays"
 readonly recording_dir="${output_dir}/recordings"
+readonly resolve_dir="${output_dir}/resolve"
 readonly replay_monitor='HDMI-A-1'
 
 gsr_cli() {
     local socket="$1"
     shift
     flatpak run --command=gsr-cli "$app_id" -ipc "$socket" "$@"
+}
+
+convert_for_resolve() {
+    local input="$1" relative output
+    [[ -f "$input" ]] || return 0
+    command -v ffmpeg >/dev/null 2>&1 || {
+        printf 'ffmpeg is required to create Resolve-ready recordings.\n' >&2
+        return 1
+    }
+    relative="${input#"$output_dir"/}"
+    output="$resolve_dir/${relative%.mp4}.mov"
+    mkdir -p "${output%/*}"
+    ffmpeg -hide_banner -loglevel error -y -i "$input" \
+        -c:v dnxhd -profile:v dnxhr_hq -pix_fmt yuv422p \
+        -c:a pcm_s16le -ar 48000 "$output"
+    printf 'Resolve-ready recording: %s\n' "$output"
 }
 
 normal_running() {
@@ -88,9 +105,10 @@ start_recording() {
 }
 
 record() {
-    local monitor
+    local monitor recording_path
     if normal_running; then
-        gsr_cli "$normal_socket_path" stop
+        recording_path="$(gsr_cli "$normal_socket_path" stop)"
+        convert_for_resolve "$recording_path"
         return 0
     fi
     monitor="$(choose_monitor || true)"
@@ -104,10 +122,14 @@ case "${1:-}" in
         ;;
     replay)
         replay_running || start_replay
-        gsr_cli "$replay_socket_path" save-replay 300
+        recording_path="$(gsr_cli "$replay_socket_path" save-replay 300)"
+        convert_for_resolve "$recording_path"
         ;;
     stop)
-        normal_running && gsr_cli "$normal_socket_path" stop || true
+        if normal_running; then
+            recording_path="$(gsr_cli "$normal_socket_path" stop)"
+            convert_for_resolve "$recording_path"
+        fi
         ;;
     start)
         replay_running || start_replay

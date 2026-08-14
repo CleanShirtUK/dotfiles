@@ -22,7 +22,7 @@ flock -n 8 || exit 0
 
 excluded_class() {
     case "$1" in
-        steam_app_*|Affinity|affinity|affinity.exe) return 0 ;;
+        steam_app_*|Affinity|affinity|affinity.exe|resolve|Resolve|com.blackmagicdesign.resolve|darktable|Darktable|obs|OBS|com.obsproject.Studio|Inkscape|org.inkscape.Inkscape) return 0 ;;
         *) return 1 ;;
     esac
 }

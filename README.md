@@ -48,6 +48,10 @@ capture desktop output audio only.
   it again stops the active normal recording.
 - `SUPER + SHIFT + Z` saves the previous five minutes from `HDMI-A-1`.
 
+GPU Screen Recorder captures realtime H.264 MP4 files. On stop or replay save,
+the helper also creates a Resolve-ready DNxHR HQ MOV with PCM audio under
+`~/Videos/ScreenCap/resolve/`, preserving the original MP4.
+
 The helper can also be controlled over SSH:
 
 ```sh
@@ -72,9 +76,10 @@ and a fallback for clients whose surfaces do not directly resolve to a
 top-level window. The opening ripple starts at the nearest window edge and
 decays inward with diffraction and chromatic separation; the focus ripple uses
 a shorter, reduced-strength edge effect. Steam game windows
-(`steam_app_*`) and Affinity are excluded from both effects because their
-existing compatibility rules disable animation and decoration behavior. The
-event listener applies the opening shader once per `openwindow` event after
+(`steam_app_*`), Affinity, DaVinci Resolve, Darktable, OBS, and Inkscape are
+excluded from both effects because their rendering workflows benefit from
+avoiding compositor shader work. The event listener applies the opening shader
+once per `openwindow` event after
 waiting for the target address to exist, and applies the focus shader on
 `activewindowv2` events, resolving the class from live client data. WezTerm
 uses moderate spawn and focus-specific variants to remain visible through its

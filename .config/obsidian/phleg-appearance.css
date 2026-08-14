@@ -1,0 +1,166 @@
+/* Machine-local appearance for the MainVault Obsidian instance. */
+
+/* Let the compositor wallpaper show through Obsidian's application chrome. */
+html,
+body,
+body.theme-dark,
+body.theme-light,
+#app,
+.app-container,
+.horizontal-main-container,
+.workspace,
+.workspace-split,
+.workspace-tabs,
+.workspace-tab-container,
+.workspace-tab-header-container,
+.workspace-tab-header-container-inner,
+.workspace-leaf,
+.workspace-leaf-content,
+.view-header,
+.view-content,
+.status-bar,
+.workspace-ribbon,
+.workspace-sidedock-vault-profile {
+    background: transparent !important;
+    background-color: transparent !important;
+    box-shadow: none !important;
+}
+
+/* Some Obsidian releases paint these layers through CSS variables instead of
+ * the element background shorthand. */
+.app-container,
+.horizontal-main-container,
+.workspace,
+.workspace-split,
+.workspace-tabs,
+.workspace-tab-container,
+.workspace-leaf,
+.workspace-leaf-content {
+    --background-primary: transparent !important;
+    --background-primary-alt: transparent !important;
+    --background-secondary: transparent !important;
+    --background-secondary-alt: transparent !important;
+}
+
+html,
+body,
+body.theme-dark,
+body.theme-light,
+#app {
+    background: transparent !important;
+    background-color: transparent !important;
+}
+
+/* Give the surrounding chrome a restrained 15% Noctalia fill. */
+.app-container,
+.horizontal-main-container,
+.workspace,
+.workspace-split,
+.workspace-tabs,
+.workspace-tab-container,
+.workspace-leaf,
+.workspace-leaf-content,
+.workspace-ribbon,
+.workspace-sidedock-vault-profile,
+.view-header,
+.status-bar {
+    background-color: rgba(26, 27, 38, 0.15) !important;
+}
+
+/* The native titlebar remains transparent; content bars stay solid. */
+.titlebar,
+.titlebar-inner {
+    background-color: transparent !important;
+}
+
+.workspace-tab-header-container,
+.workspace-tab-header-container-inner,
+.view-header {
+    background-color: #1a1b26 !important;
+}
+
+.workspace-tab-header,
+.workspace-tab-header-inner,
+.workspace-tab-header-inner-title {
+    color: #c0caf5 !important;
+    opacity: 1 !important;
+    visibility: visible !important;
+}
+
+.workspace-tab-header-container,
+.workspace-tab-header-container-inner,
+.workspace-tab-header,
+.workspace-tab-header-inner,
+.workspace-tab-header-inner-title {
+    display: flex !important;
+}
+
+.workspace-tab-header-inner-title {
+    color: #c0caf5 !important;
+    font-size: var(--font-ui-small) !important;
+    text-shadow: none !important;
+}
+
+/* Keep both source mode and reading mode fully legible above the chrome. */
+.view-content,
+.markdown-source-view,
+.markdown-source-view.mod-cm6,
+.markdown-source-view .cm-editor,
+.markdown-source-view .cm-scroller,
+.markdown-preview-view {
+    background-color: #1a1b26 !important;
+    color: #c0caf5 !important;
+    opacity: 1 !important;
+}
+
+/* Keep the title/tab presentation, but hide only native window controls. */
+.titlebar-button.mod-minimize,
+.titlebar-button.mod-maximize,
+.titlebar-button.mod-close {
+    display: none !important;
+}
+
+/* Keep the actual reading and editing surfaces opaque and softly rounded. */
+.markdown-source-view,
+.markdown-preview-view,
+.markdown-source-view .cm-editor,
+.markdown-source-view .cm-scroller {
+    background-color: #1a1b26 !important;
+    border-radius: 10px !important;
+}
+
+.markdown-source-view,
+.markdown-preview-view {
+    overflow: hidden;
+}
+
+/* Preserve readable controls without reintroducing large panel boxes. */
+.workspace-tab-header.is-active,
+.workspace-tab-header:hover,
+.nav-file-title.is-active,
+.nav-folder-title.is-active,
+.nav-file-title:hover,
+.nav-folder-title:hover {
+    border-radius: 8px !important;
+}
+
+/* Menus and dialogs must not reveal the wallpaper behind their content. */
+.menu,
+.suggestion-container,
+.prompt,
+.modal,
+.modal-container,
+.popover,
+.notice,
+.tooltip {
+    background-color: #24283b !important;
+    border-radius: 10px !important;
+    box-shadow: var(--shadow-s) !important;
+}
+
+/* Remove full-window decoration that otherwise defeats compositor rounding. */
+.titlebar,
+.titlebar-inner,
+.workspace-tab-header-container {
+    border: none !important;
+}

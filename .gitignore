@@ -24,6 +24,8 @@
 !.config/gtk-4.0/settings.ini
 !.config/zen/
 !.config/zen/phleg-userChrome.css
+!.config/obsidian/
+!.config/obsidian/phleg-appearance.css
 !.config/zed/
 !.config/zed/settings.json
 !.config/zed/themes/
@@ -69,6 +71,7 @@
 !.local/bin/configure-mission-center
 !.local/bin/play-session-sound
 !.local/bin/configure-zen
+!.local/bin/configure-obsidian
 !.local/bin/install-actions-for-nautilus
 !.local/bin/nautilus-open-as-admin
 !.local/bin/nautilus-copy-path

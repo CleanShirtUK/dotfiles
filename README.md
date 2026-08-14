@@ -65,6 +65,22 @@ compositor shadow, and applies the same 10px rounding used by the desktop.
 After deploying the dotfiles, restart Zed or run `zed: reload window` from the
 command palette to load the tracked theme.
 
+## Obsidian
+
+The MainVault-specific appearance is tracked in
+`.config/obsidian/phleg-appearance.css` and installed locally with:
+
+```sh
+.local/bin/configure-obsidian
+```
+
+The helper accepts an alternate vault through `OBSIDIAN_VAULT`. It enables the
+snippet in that vault, then adds local Syncthing ignore rules for the generated
+snippet and `.obsidian/appearance.json`. This keeps the appearance specific to
+the machine where the helper is run and does not alter other synced machines.
+Restart Obsidian after running the helper. The Hyprland rule applies 10px
+rounding and removes the compositor shadow from the Obsidian client.
+
 GTK shadow handling is kept in the tracked `.config/gtk-3.0/shadow-overrides.css`
 and `.config/gtk-4.0/shadow-overrides.css` files. They remove GTK-rendered
 shadows and shadow gradients so transparent GTK surfaces do not produce box

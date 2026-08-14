@@ -1,0 +1,54 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+readonly source_css="$HOME/.config/obsidian/phleg-appearance.css"
+readonly vault_dir="${OBSIDIAN_VAULT:-$HOME/Documents/Obsidian/MainVault}"
+readonly obsidian_dir="$vault_dir/.obsidian"
+readonly snippets_dir="$obsidian_dir/snippets"
+readonly snippet_name='phleg-appearance'
+readonly snippet_file="$snippets_dir/$snippet_name.css"
+readonly appearance_file="$obsidian_dir/appearance.json"
+readonly stignore_file="$vault_dir/.stignore"
+readonly begin_marker='# BEGIN PHLEG OBSIDIAN LOCAL APPEARANCE'
+readonly end_marker='# END PHLEG OBSIDIAN LOCAL APPEARANCE'
+
+if [[ ! -f "$source_css" ]]; then
+    printf 'Tracked Obsidian CSS was not found: %s\n' "$source_css" >&2
+    exit 1
+fi
+
+if [[ ! -d "$obsidian_dir" ]]; then
+    printf 'Obsidian vault was not found: %s\n' "$vault_dir" >&2
+    exit 1
+fi
+
+command -v jq >/dev/null || {
+    printf 'jq is required to update %s\n' "$appearance_file" >&2
+    exit 1
+}
+
+mkdir -p "$snippets_dir"
+cp "$source_css" "$snippet_file"
+
+if [[ -f "$appearance_file" ]]; then
+    jq --arg snippet "$snippet_name" \
+        '.enabledCssSnippets = (((.enabledCssSnippets // []) + [$snippet]) | unique)' \
+        "$appearance_file" > "$appearance_file.tmp"
+    mv "$appearance_file.tmp" "$appearance_file"
+else
+    printf '{"enabledCssSnippets":["%s"]}\n' "$snippet_name" > "$appearance_file"
+fi
+
+touch "$stignore_file"
+if ! grep -Fq "$begin_marker" "$stignore_file"; then
+    cat >> "$stignore_file" <<EOF
+
+$begin_marker
+.obsidian/appearance.json
+.obsidian/snippets/$snippet_name.css
+$end_marker
+EOF
+fi
+
+printf 'Installed local Obsidian appearance in %s. Restart Obsidian to apply it.\n' "$vault_dir"

@@ -341,6 +341,16 @@ hl.window_rule({
     no_shadow = true,
 })
 
+-- Obsidian's tracked snippet makes its editor surface opaque and its chrome
+-- transparent; keep the outer client consistent with the other applications.
+hl.window_rule({
+    name = "obsidian-appearance",
+    match = { class = "^md\\.obsidian\\.Obsidian$" },
+    rounding = 10,
+    decorate = false,
+    no_shadow = true,
+})
+
 hl.window_rule({
     name = "float-keyring-prompter",
     match = { class = "^gcr-prompter$" },

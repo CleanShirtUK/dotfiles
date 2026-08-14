@@ -35,6 +35,7 @@
 !.config/systemd/user/hyprshell.service
 !.config/systemd/user/window-shader-events.service
 !.config/systemd/user/localsend.service
+!.config/systemd/user/wallpaper-session-effects.service
 !.local/share/
 !.local/share/color-schemes/
 !.local/share/color-schemes/noctalia.colors

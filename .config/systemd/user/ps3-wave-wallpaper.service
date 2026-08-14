@@ -4,8 +4,11 @@ PartOf=hyprland-session.target
 After=hyprland-session.target
 
 [Service]
+ExecStartPre=/usr/bin/mkdir -p %h/.cache/ps3-wave-wallpaper
 ExecStart=%h/.local/src/ps3-wave-wallpaper/ps3-wave-wallpaper %h/.local/src/ps3-wave-wallpaper/wave.frag
 Environment=PS3_WAVE_DISABLE_SNAPSHOTS=1
+Environment=PS3_WAVE_BACKGROUND_FILE=%h/.cache/ps3-wave-wallpaper/hyprlock-background.conf
+Environment=PS3_WAVE_CONTROL_FILE=%h/.cache/ps3-wave-wallpaper/control
 Restart=on-failure
 RestartSec=2
 

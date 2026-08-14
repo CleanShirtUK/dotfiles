@@ -1,0 +1,96 @@
+#!/bin/sh
+
+set -eu
+
+state_file="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/phleg-blank-special-workspaces"
+
+focus_monitor() {
+    hyprctl dispatch "hl.dsp.focus({ monitor = \"$1\" })" >/dev/null
+}
+
+focus_workspace() {
+    hyprctl dispatch "hl.dsp.focus({ workspace = \"$1\" })" >/dev/null
+}
+
+set_animations() {
+    hyprctl keyword animations:enabled "$1" >/dev/null
+}
+
+set_restore_animation_speeds() {
+    hyprctl eval 'hl.animation({ leaf = "windowsIn", enabled = true, speed = 8.2, bezier = "easeOutQuint", style = "popin 80%" })' >/dev/null || true
+    hyprctl eval 'hl.animation({ leaf = "windows", enabled = true, speed = 8.7, bezier = "easeInOutCubic" })' >/dev/null
+    hyprctl eval 'hl.animation({ leaf = "windowsMove", enabled = true, speed = 8.55, bezier = "easeInOutCubic", style = "slide" })' >/dev/null || true
+    hyprctl eval 'hl.animation({ leaf = "fadeIn", enabled = true, speed = 4.5, bezier = "easeOutQuint" })' >/dev/null
+    hyprctl eval 'hl.animation({ leaf = "workspaces", enabled = true, speed = 6.0, bezier = "easeInOutCubic", style = "fade" })' >/dev/null
+    hyprctl eval 'hl.animation({ leaf = "workspacesIn", enabled = true, speed = 7.35, bezier = "easeInOutCubic", style = "fade" })' >/dev/null
+    hyprctl eval 'hl.animation({ leaf = "workspacesOut", enabled = true, speed = 6.0, bezier = "easeInOutCubic", style = "fade" })' >/dev/null
+}
+
+set_normal_animation_speeds() {
+    hyprctl eval 'hl.animation({ leaf = "windowsIn", enabled = false, speed = 4.1, spring = "easy", style = "popin 80%" })' >/dev/null
+    hyprctl eval 'hl.animation({ leaf = "windows", enabled = true, speed = 2.9, bezier = "almostLinear" })' >/dev/null
+    hyprctl eval 'hl.animation({ leaf = "windowsMove", enabled = true, speed = 2.85, bezier = "almostLinear", style = "slide" })' >/dev/null
+    hyprctl eval 'hl.animation({ leaf = "fadeIn", enabled = true, speed = 1.5, bezier = "almostLinear" })' >/dev/null
+    hyprctl eval 'hl.animation({ leaf = "workspaces", enabled = true, speed = 2.0, bezier = "almostLinear", style = "slidefadevert -100%" })' >/dev/null
+    hyprctl eval 'hl.animation({ leaf = "workspacesIn", enabled = true, speed = 2.45, bezier = "almostLinear", style = "slidefadevert -100%" })' >/dev/null
+    hyprctl eval 'hl.animation({ leaf = "workspacesOut", enabled = true, speed = 2.0, bezier = "almostLinear", style = "slidefadevert -100%" })' >/dev/null
+}
+
+blank_workspace_for_monitor() {
+    case "$1" in
+        DP-1) printf '1\n' ;;
+        HDMI-A-1) printf '6\n' ;;
+        *) return 1 ;;
+    esac
+}
+
+focus_blank_on_all_monitors() {
+    hyprctl monitors -j | jq -r '.[].name' | while IFS= read -r monitor; do
+        [ -n "$monitor" ] || continue
+        blank_workspace=$(blank_workspace_for_monitor "$monitor") || continue
+        focus_monitor "$monitor"
+        focus_workspace "$blank_workspace"
+    done
+}
+
+restore_workspaces() {
+    active_monitor=
+    while IFS="$(printf '\t')" read -r monitor workspace; do
+        if [ "$monitor" = "@active" ]; then
+            active_monitor=$workspace
+            continue
+        fi
+        focus_monitor "$monitor"
+        focus_workspace "$workspace"
+    done < "$state_file"
+    [ -n "$active_monitor" ] && focus_monitor "$active_monitor"
+}
+
+case "${1:-}" in
+    enter)
+        [ -e "$state_file" ] && exit 0
+        temporary_state=$(mktemp)
+        {
+            printf '@active\t%s\n' "$(hyprctl activeworkspace -j | jq -r '.monitor')"
+            hyprctl monitors -j | jq -r '.[] | [.name, .activeWorkspace.name] | @tsv'
+        } > "$temporary_state"
+        mv "$temporary_state" "$state_file"
+        set_animations false
+        focus_blank_on_all_monitors
+        sleep 0.1
+        set_animations true
+        ;;
+    restore)
+        [ -e "$state_file" ] || exit 0
+        set_restore_animation_speeds
+        set_animations true
+        restore_workspaces
+        sleep 3.5
+        set_normal_animation_speeds
+        rm -f "$state_file"
+        ;;
+    *)
+        printf 'usage: %s {enter|restore}\n' "$0" >&2
+        exit 2
+        ;;
+esac

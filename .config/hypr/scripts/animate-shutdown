@@ -1,0 +1,11 @@
+#!/bin/sh
+
+set -eu
+
+"$HOME/.config/hypr/scripts/wallpaper-animation" exit
+sleep 1
+
+if command -v hyprshutdown >/dev/null 2>&1; then
+    exec hyprshutdown
+fi
+exec hyprctl dispatch 'hl.dsp.exit()'

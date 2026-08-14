@@ -1,0 +1,12 @@
+[Unit]
+Description=PS3 wallpaper and shell transition effects
+PartOf=hyprland-session.target
+After=hyprland-session.target ps3-wave-wallpaper.service noctalia.service
+
+[Service]
+ExecStart=%h/.config/hypr/scripts/wallpaper-session-effects
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=hyprland-session.target

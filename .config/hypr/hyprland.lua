@@ -9,6 +9,8 @@ local fileManager = "nautilus"
 local launcher = "noctalia msg panel-toggle launcher"
 local scripts = home .. "/.config/hypr/scripts"
 local gpuScreenRecorder = home .. "/.local/bin/gpu-screen-recorder-control"
+local animateLock = scripts .. "/animate-lock"
+local animateShutdown = scripts .. "/animate-shutdown"
 local moveWindowWorkspace = scripts .. "/move-window-workspace"
 local focusWorkspace = scripts .. "/focus-workspace"
 local mainMod = "SUPER"
@@ -28,7 +30,6 @@ hl.permission("/usr/(bin|local/bin)/hyprpm", "plugin", "allow")
 -- Session lifecycle
 
 hl.on("hyprland.start", function()
-    hl.exec_cmd("noctalia")
     hl.exec_cmd("systemctl --user start plasma-polkit-agent.service")
     hl.exec_cmd(scripts .. "/restore-minimized")
     hl.exec_cmd(scripts .. "/float-bitwarden-popup &")
@@ -143,24 +144,24 @@ hl.curve("easy", { type = "spring", mass = 1, stiffness = 71.2633, dampening = 1
 hl.animation({ leaf = "global", enabled = true, speed = 10, bezier = "default" })
 hl.animation({ leaf = "border", enabled = true, speed = 5.39, bezier = "easeOutQuint" })
 -- Keep window geometry changes smooth so they do not fight workspace slides.
-hl.animation({ leaf = "windows", enabled = true, speed = 3.5, bezier = "almostLinear" })
+hl.animation({ leaf = "windows", enabled = true, speed = 2.9, bezier = "almostLinear" })
     -- Keep the client surface fixed; fadeIn handles opacity.
 hl.animation({ leaf = "windowsIn", enabled = false, speed = 4.1, spring = "easy", style = "popin 80%" })
-hl.animation({ leaf = "windowsOut", enabled = true, speed = 3.49, bezier = "linear", style = "slide" })
-hl.animation({ leaf = "fadeIn", enabled = true, speed = 1.73, bezier = "almostLinear" })
-hl.animation({ leaf = "fadeOut", enabled = true, speed = 1.46, bezier = "almostLinear" })
+hl.animation({ leaf = "windowsOut", enabled = true, speed = 2.95, bezier = "linear", style = "slide" })
+hl.animation({ leaf = "fadeIn", enabled = true, speed = 1.5, bezier = "almostLinear" })
+hl.animation({ leaf = "fadeOut", enabled = true, speed = 1.25, bezier = "almostLinear" })
 hl.animation({ leaf = "fade", enabled = true, speed = 3.03, bezier = "quick" })
 hl.animation({ leaf = "layers", enabled = true, speed = 3.81, bezier = "easeOutQuint" })
 hl.animation({ leaf = "layersIn", enabled = true, speed = 4, bezier = "easeOutQuint", style = "fade" })
 hl.animation({ leaf = "layersOut", enabled = true, speed = 1.5, bezier = "linear", style = "fade" })
 hl.animation({ leaf = "fadeLayersIn", enabled = true, speed = 1.79, bezier = "almostLinear" })
 hl.animation({ leaf = "fadeLayersOut", enabled = true, speed = 1.39, bezier = "almostLinear" })
-hl.animation({ leaf = "windowsMove", enabled = true, speed = 3.35, bezier = "almostLinear", style = "slide" })
+hl.animation({ leaf = "windowsMove", enabled = true, speed = 2.85, bezier = "almostLinear", style = "slide" })
 -- Workspaces are arranged vertically, so workspace changes slide vertically
 -- instead of fading between unrelated views.
-hl.animation({ leaf = "workspaces", enabled = true, speed = 2.35, bezier = "almostLinear", style = "slidefadevert -100%" })
-hl.animation({ leaf = "workspacesIn", enabled = true, speed = 2.9, bezier = "almostLinear", style = "slidefadevert -100%" })
-hl.animation({ leaf = "workspacesOut", enabled = true, speed = 2.35, bezier = "almostLinear", style = "slidefadevert -100%" })
+hl.animation({ leaf = "workspaces", enabled = true, speed = 2.0, bezier = "almostLinear", style = "slidefadevert -100%" })
+hl.animation({ leaf = "workspacesIn", enabled = true, speed = 2.45, bezier = "almostLinear", style = "slidefadevert -100%" })
+hl.animation({ leaf = "workspacesOut", enabled = true, speed = 2.0, bezier = "almostLinear", style = "slidefadevert -100%" })
 hl.animation({ leaf = "zoomFactor", enabled = true, speed = 7, bezier = "quick" })
 
 -- Keybindings
@@ -169,8 +170,8 @@ hl.bind(mainMod .. " + E", hl.dsp.exec_cmd(fileManager))
 hl.bind(mainMod .. " + Space", hl.dsp.exec_cmd(launcher))
 hl.bind(mainMod .. " + C", hl.dsp.window.close())
 hl.bind(mainMod .. " + V", hl.dsp.window.float({ action = "toggle" }))
-hl.bind(mainMod .. " + L", hl.dsp.exec_cmd("loginctl lock-session"))
-hl.bind(mainMod .. " + M", hl.dsp.exec_cmd([[command -v hyprshutdown >/dev/null 2>&1 && hyprshutdown || hyprctl dispatch 'hl.dsp.exit()']]))
+hl.bind(mainMod .. " + L", hl.dsp.exec_cmd(animateLock))
+hl.bind(mainMod .. " + M", hl.dsp.exec_cmd(animateShutdown))
 hl.bind("ALT + Return", hl.dsp.window.fullscreen({ mode = "fullscreen", action = "toggle" }))
 hl.bind(mainMod .. " + SHIFT + S", hl.dsp.exec_cmd([[grim -g "$(slurp)" - | wl-copy --type image/png]]))
 hl.bind(mainMod .. " + SHIFT + R", hl.dsp.exec_cmd(gpuScreenRecorder .. " toggle"))

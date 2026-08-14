@@ -1,0 +1,25 @@
+#!/bin/sh
+
+set -eu
+
+signal_renderer() {
+    printf '%s\n' "$1" > "$HOME/.cache/ps3-wave-wallpaper/control"
+}
+
+case "${1:-}" in
+    intro)
+        noctalia msg bar-hide >/dev/null 2>&1 || true
+        noctalia msg dock-hide >/dev/null 2>&1 || true
+        signal_renderer intro
+        ;;
+    exit)
+        noctalia msg bar-hide >/dev/null 2>&1 || true
+        noctalia msg dock-hide >/dev/null 2>&1 || true
+        "$HOME/.config/hypr/scripts/blank-special-workspaces" enter
+        signal_renderer exit
+        ;;
+    *)
+        printf 'usage: %s {intro|exit}\n' "$0" >&2
+        exit 2
+        ;;
+esac

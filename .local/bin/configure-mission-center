@@ -1,0 +1,39 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+readonly app_id='io.missioncenter.MissionCenter'
+readonly gtk_theme='adw-gtk3-dark:dark'
+readonly icon_theme='kora'
+readonly gtk_config_dir="$HOME/.config/gtk-4.0"
+readonly flatpak_config_dir="${FLATPAK_USER_DIR:-$HOME/.var/app}/$app_id/config"
+readonly gtk_config_link="$flatpak_config_dir/gtk-4.0"
+
+command -v flatpak >/dev/null 2>&1 || {
+    printf 'Flatpak is required but was not found.\n' >&2
+    exit 1
+}
+
+flatpak info "$app_id" >/dev/null 2>&1 || {
+    printf '%s is not installed. Install it from Flathub first.\n' "$app_id" >&2
+    exit 1
+}
+
+[[ -d "$gtk_config_dir" ]] || {
+    printf 'GTK4 configuration directory was not found: %s\n' "$gtk_config_dir" >&2
+    exit 1
+}
+
+mkdir -p "$flatpak_config_dir"
+if [[ -e "$gtk_config_link" && ! -L "$gtk_config_link" ]]; then
+    printf 'Refusing to replace existing Flatpak GTK4 configuration: %s\n' "$gtk_config_link" >&2
+    exit 1
+fi
+ln -sfn "$gtk_config_dir" "$gtk_config_link"
+
+flatpak override --user \
+    --env="GTK_THEME=$gtk_theme" \
+    --env="ICON_THEME=$icon_theme" \
+    "$app_id"
+
+printf 'Mission Center GTK theme configured as %s. Restart Mission Center to apply it.\n' "$gtk_theme"

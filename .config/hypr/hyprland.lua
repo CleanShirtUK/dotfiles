@@ -248,6 +248,12 @@ hl.window_rule({
 
 -- Utility and control-panel applications are more useful as floating windows
 -- than as full-sized tiled clients.
+hl.window_rule({
+    name = "mission-center-size",
+    match = { class = "^io\\.missioncenter\\.MissionCenter$" },
+    size = { 1012, 718 },
+})
+
 for _, class in ipairs({
     "^io\\.missioncenter\\.MissionCenter$",
     "^pavucontrol$",

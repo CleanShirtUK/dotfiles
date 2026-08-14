@@ -1,5 +1,3 @@
 /* Keep theme, generated colors, and local overrides in separate layers. */
-@import url("/home/josh/.local/share/themes/adw-gtk3-dark/gtk-4.0/libadwaita.css");
-@import url("/home/josh/.local/share/themes/adw-gtk3-dark/gtk-4.0/libadwaita-tweaks.css");
 @import url("noctalia.css");
 @import url("nautilus-overrides.css");

@@ -52,3 +52,4 @@
 !.local/bin/show-localsend
 !.local/bin/gpu-screen-recorder-control
 !.local/bin/install-gpu-screen-recorder
+!.local/bin/configure-mission-center

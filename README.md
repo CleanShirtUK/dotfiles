@@ -13,10 +13,27 @@ Personal Hyprland and Noctalia configuration.
 - GPU Screen Recorder, installed system-wide from Flathub as
   `com.dec05eba.gpu_screen_recorder`
 - The separate [`ps3-wave-wallpaper`](https://github.com/CleanShirtUK/ps3-wave-wallpaper) project, running in live-wallpaper-only mode
+- The `adw-gtk3-dark` GTK theme and `kora` icon theme
 
 The wallpaper project is installed and built by
 allow-listed through `.gitignore`; only reviewed configuration files are
 tracked.
+
+## Mission Center
+
+Mission Center is installed from Flathub and runs in a sandbox with its own
+GTK configuration directory. Apply the same GTK theme and icon theme used by
+the other desktop applications, including the tracked GTK4 color and
+transparency overrides, with:
+
+```sh
+.local/bin/configure-mission-center
+```
+
+The helper links the tracked GTK4 configuration into Mission Center's
+per-user Flatpak configuration and applies a per-user Flatpak override. It is
+safe to run repeatedly and does not modify the system-wide Flatpak
+installation.
 
 Application workspace routing is handled by
 `.config/hypr/scripts/dynamic-app-workspaces`. It allocates a live workspace

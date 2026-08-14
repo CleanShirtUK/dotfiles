@@ -16,6 +16,11 @@ config.window_background_opacity = 0.4
 config.keys = {
   {
     key = 'c',
+    mods = 'ALT',
+    action = wezterm.action.SendKey { key = 'c', mods = 'CTRL' },
+  },
+  {
+    key = 'c',
     mods = 'CTRL',
     action = wezterm.action.CopyTo 'Clipboard',
   },

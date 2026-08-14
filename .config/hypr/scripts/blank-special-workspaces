@@ -66,9 +66,21 @@ restore_workspaces() {
     [ -n "$active_monitor" ] && focus_monitor "$active_monitor"
 }
 
+workspaces_are_blank() {
+    for monitor in $(hyprctl monitors -j | jq -r '.[].name'); do
+        blank_workspace=$(blank_workspace_for_monitor "$monitor") || return 1
+        active_workspace=$(hyprctl monitors -j | jq -r --arg monitor "$monitor" \
+            '.[] | select(.name == $monitor) | .activeWorkspace.name')
+        [ "$active_workspace" = "$blank_workspace" ] || return 1
+    done
+}
+
 case "${1:-}" in
     enter)
-        [ -e "$state_file" ] && exit 0
+        if [ -e "$state_file" ]; then
+            workspaces_are_blank && exit 0
+            rm -f "$state_file"
+        fi
         temporary_state=$(mktemp)
         {
             printf '@active\t%s\n' "$(hyprctl activeworkspace -j | jq -r '.monitor')"

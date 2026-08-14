@@ -1,0 +1,64 @@
+#!/usr/bin/env bash
+
+set -u
+
+readonly wallpaper_control="${HOME}/.cache/ps3-wave-wallpaper/control"
+gamemode_pid=""
+in_game=0
+
+wallpaper_animation() {
+    local command="$1"
+    [[ -p "$wallpaper_control" ]] || return 0
+    timeout 1s sh -c 'printf "%s\n" "$1" > "$2"' sh "$command" "$wallpaper_control" 2>/dev/null || true
+}
+
+game_mode_active() {
+    timeout 1s gamemoded -s 2>/dev/null | grep -q 'gamemode is active'
+}
+
+hold_game_mode() {
+    if [[ -n "$gamemode_pid" ]] && ! kill -0 "$gamemode_pid" 2>/dev/null; then
+        gamemode_pid=""
+    fi
+    if ! game_mode_active; then
+        if [[ -z "$gamemode_pid" ]]; then
+            setsid gamemoderun sleep 2147483647 >/dev/null 2>&1 &
+            gamemode_pid="$!"
+        fi
+    fi
+}
+
+enter_game_mode() {
+    hold_game_mode
+    wallpaper_animation exit
+    in_game=1
+}
+
+leave_game_mode() {
+    if [[ -n "$gamemode_pid" ]]; then
+        kill -- "-$gamemode_pid" 2>/dev/null || true
+        wait "$gamemode_pid" 2>/dev/null || true
+        gamemode_pid=""
+    fi
+    wallpaper_animation intro
+    in_game=0
+}
+
+cleanup() {
+    if [[ -n "$gamemode_pid" ]]; then
+        kill -- "-$gamemode_pid" 2>/dev/null || true
+    fi
+}
+trap cleanup EXIT INT TERM
+
+while :; do
+    has_game="$(timeout 1s hyprctl clients -j 2>/dev/null | jq -r 'any(.[]; (.class // "") | test("^steam_app_"))' 2>/dev/null || printf 'false')"
+    if [[ "$has_game" == true && ! $in_game -eq 1 ]]; then
+        enter_game_mode
+    elif [[ "$has_game" == true && $in_game -eq 1 ]]; then
+        hold_game_mode
+    elif [[ "$has_game" != true && $in_game -eq 1 ]]; then
+        leave_game_mode
+    fi
+    sleep 0.5
+done

@@ -6,6 +6,7 @@ if pidof hyprlock >/dev/null 2>&1; then
     exit 0
 fi
 
+"$HOME/.config/hypr/scripts/blank-special-workspaces" enter
 "$HOME/.config/hypr/scripts/wallpaper-animation" exit
 sleep 1
 exec hyprlock

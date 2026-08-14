@@ -16,6 +16,14 @@ local focusWorkspace = scripts .. "/focus-workspace"
 local mainMod = "SUPER"
 local hyprGlassPlugin = home .. "/.local/share/hyprland/plugins/hyprglass.so"
 local hyprWindowShadePlugin = home .. "/.local/share/hyprland/plugins/HyprWindowShade.so"
+local hyprlockBackgroundColor = "rgb(050508)"
+local hyprlockBackgroundFile = io.open(home .. "/.cache/ps3-wave-wallpaper/hyprlock-background.conf", "r")
+if hyprlockBackgroundFile then
+    local contents = hyprlockBackgroundFile:read("*a")
+    hyprlockBackgroundFile:close()
+    local color = contents:match("color%s*=%s*rgb%((%x+)%)")
+    if color then hyprlockBackgroundColor = "rgb(" .. color .. ")" end
+end
 
 require("monitors")
 dofile(home .. "/.config/hypr/noctalia.lua")
@@ -34,10 +42,16 @@ hl.on("hyprland.start", function()
     hl.exec_cmd(scripts .. "/restore-minimized")
     hl.exec_cmd(scripts .. "/float-bitwarden-popup &")
     hl.exec_cmd(scripts .. "/dynamic-app-workspaces &")
-    hl.exec_cmd("systemctl --user restart hyprshell.service")
     hl.exec_cmd("dbus-update-activation-environment --systemd --all")
     hl.exec_cmd("systemctl --user import-environment WAYLAND_DISPLAY XDG_CURRENT_DESKTOP HYPRLAND_INSTANCE_SIGNATURE QT_QPA_PLATFORMTHEME")
     hl.exec_cmd("systemctl --user start hyprland-session.target")
+    -- Restart Wayland-bound services when greetd reuses the user manager for a
+    -- new Hyprland instance after logout.
+    hl.exec_cmd("sh -c 'sleep 3; systemctl --user reset-failed noctalia.service; systemctl --user stop noctalia.service ps3-wave-wallpaper.service wallpaper-session-effects.service; systemctl --user start noctalia.service ps3-wave-wallpaper.service wallpaper-session-effects.service' &")
+    -- Let the compositor finish session startup before Hyprshell registers
+    -- its Lua keybindings.
+    hl.exec_cmd("sh -c 'sleep 2; systemctl --user restart hyprshell.service' &")
+    hl.exec_cmd("systemctl --user restart game-mode.service")
     -- Restart after importing the session environment so hypridle can reach Wayland.
     hl.exec_cmd("systemctl --user restart hypridle.service")
     hl.exec_cmd("systemctl --user restart localsend.service")
@@ -90,9 +104,11 @@ hl.config({
 
     misc = {
         force_default_wallpaper = 0,
+        background_color = hyprlockBackgroundColor,
         disable_hyprland_logo = true,
         focus_on_activate = true,
         animate_manual_resizes = true,
+        disable_splash_rendering = true,
     },
 
     binds = {

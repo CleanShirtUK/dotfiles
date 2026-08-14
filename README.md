@@ -14,11 +14,50 @@ Personal Hyprland and Noctalia configuration.
 - GPU Screen Recorder, installed system-wide from Flathub as
   `com.dec05eba.gpu_screen_recorder`
 - The separate [`ps3-wave-wallpaper`](https://github.com/CleanShirtUK/ps3-wave-wallpaper) project, running in live-wallpaper-only mode
+- GameMode, with `gamemoded` and `gamemoderun` available
 - The `adw-gtk3-dark` GTK theme and `kora` icon theme
 
-The wallpaper project is installed and built by
-allow-listed through `.gitignore`; only reviewed configuration files are
+The wallpaper project is installed and built by the helper above. Its source
+is allow-listed through `.gitignore`; only reviewed configuration files are
 tracked.
+
+## PS3 Wallpaper
+
+Install or update the dedicated wallpaper project with:
+
+```sh
+.local/bin/dotfiles-install-wallpaper
+```
+
+This builds the project in `~/.local/src/ps3-wave-wallpaper`. Hyprland starts
+the user service after importing the current Wayland session environment,
+renders one continuous shader wallpaper across the configured monitors, and
+restarts it after a compositor session change. It runs in live-wallpaper-only
+mode: snapshot generation is disabled and the wallpaper starts hidden until
+the session-effects service triggers the single startup intro.
+
+The renderer receives transition requests through
+`~/.cache/ps3-wave-wallpaper/control`. The session-effects service sends:
+
+- `intro` at graphical-session startup and after unlock
+- `exit` when locking or shutting down
+
+These transitions hide the Noctalia bar and dock first. Startup and unlock
+intros reveal them again; lock and shutdown exits also blank the configured
+special workspaces. Session transitions play the tracked login/logout sounds.
+On unlock, the previous workspaces are restored after the wallpaper and shell
+reveal has settled.
+
+The renderer writes the current wallpaper background configuration to
+`~/.cache/ps3-wave-wallpaper/hyprlock-background.conf`, which is sourced by
+Hyprlock. Hyprland also reads that file for its no-wallpaper background color,
+so the startup blank and lock screen use the same generated color.
+
+The wallpaper's resource governor may freeze normal wallpaper motion under
+load, but explicit transition requests always thaw it so `intro` and `exit`
+remain visible. Steam game mode uses the FIFO directly: it sends `exit` while
+any `steam_app_*` client is open and `intro` after the last one closes. Those
+game transitions deliberately omit session sounds and workspace changes.
 
 ## Session Sounds
 
@@ -57,6 +96,23 @@ Hyprshell is managed by the user service
 `.config/hypr/scripts/hyprshell-start` with automatic restart-on-failure. The
 tracked configuration is in `.config/hyprshell/`, and its stylesheet imports
 the Noctalia GTK4 palette from `.config/gtk-4.0/noctalia.css`.
+
+## GameMode
+
+The user service `.config/systemd/user/game-mode.service` watches Hyprland for
+Steam game clients (`steam_app_*`). When the first game opens, it holds a
+standard `gamemoderun` client for the lifetime of the game session. When the
+last game closes, that client exits and GameMode releases its settings. Existing
+GameMode clients are not disturbed.
+
+The watcher also sends `exit` and `intro` directly to the PS3 wallpaper
+control FIFO. These transitions intentionally omit session sounds and
+workspace changes. Enable the service after installing GameMode with:
+
+```sh
+systemctl --user daemon-reload
+systemctl --user enable --now game-mode.service
+```
 
 ## GPU Screen Recorder
 

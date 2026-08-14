@@ -156,10 +156,32 @@ cleanup() {
 
 }
 
+focus_workspace_monitor() {
+    local workspace="$1" monitor window
+    sleep 0.1
+    window="$(hyprctl clients -j 2>/dev/null | jq -r --arg workspace "$workspace" \
+        'first(.[] | select(.workspace.name == $workspace and .mapped and (.hidden | not)) | .address) // empty')"
+    if [[ -n "$window" ]]; then
+        hyprctl dispatch --quiet "hl.dsp.focus({ window = \"address:$window\" })" >/dev/null 2>&1
+        sleep 0.05
+        hyprctl dispatch --quiet "hl.dsp.focus({ window = \"address:$window\" })" >/dev/null 2>&1
+        return 0
+    fi
+    monitor="$(hyprctl workspaces -j 2>/dev/null | jq -r --arg workspace "$workspace" \
+        'first(.[] | select(.name == $workspace) | .monitor) // empty')"
+    [[ -n "$monitor" ]] || return 0
+    hyprctl dispatch --quiet "hl.dsp.focus({ monitor = \"$monitor\" })" >/dev/null 2>&1
+    sleep 0.05
+    hyprctl dispatch --quiet "hl.dsp.focus({ monitor = \"$monitor\" })" >/dev/null 2>&1
+}
+
 while :; do
     [[ -S "$socket" ]] || { sleep 0.2; continue; }
     while IFS= read -r event; do
         case "$event" in
+            workspace\>\>*)
+                focus_workspace_monitor "${event#workspace>>}"
+                ;;
             openwindow\>*)
                 address="${event#openwindow>>}"
                 address="${address%%,*}"

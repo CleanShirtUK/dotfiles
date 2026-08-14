@@ -1,0 +1,14 @@
+[Unit]
+Description=GameMode integration for Steam games and the PS3 wallpaper
+PartOf=hyprland-session.target
+After=hyprland-session.target ps3-wave-wallpaper.service
+
+[Service]
+ExecStart=%h/.config/hypr/scripts/game-mode
+Restart=on-failure
+RestartSec=2
+TimeoutStopSec=3
+TimeoutStopFailureMode=kill
+
+[Install]
+WantedBy=hyprland-session.target

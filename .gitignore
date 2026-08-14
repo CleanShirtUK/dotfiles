@@ -43,6 +43,9 @@
 !.local/share/
 !.local/share/color-schemes/
 !.local/share/color-schemes/noctalia.colors
+!.local/share/session-sounds/
+!.local/share/session-sounds/session-login.wav
+!.local/share/session-sounds/session-logout.wav
 !.local/
 !.local/bin/
 !.local/bin/dotfiles-install-wallpaper
@@ -53,3 +56,4 @@
 !.local/bin/gpu-screen-recorder-control
 !.local/bin/install-gpu-screen-recorder
 !.local/bin/configure-mission-center
+!.local/bin/play-session-sound

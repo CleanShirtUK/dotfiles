@@ -9,6 +9,7 @@ Personal Hyprland and Noctalia configuration.
 - `hyprglass` plugin
 - HyprWindowShade plugin, built by `.local/bin/install-hyprwindowshade`
 - `bash`, `flock`, `jq`, `socat`, `grim`, `slurp`, `wl-copy`, and `zenity`
+- `paplay` or `aplay` for session transition sounds
 - LocalSend, installed system-wide from Flathub as `org.localsend.localsend_app`
 - GPU Screen Recorder, installed system-wide from Flathub as
   `com.dec05eba.gpu_screen_recorder`
@@ -18,6 +19,15 @@ Personal Hyprland and Noctalia configuration.
 The wallpaper project is installed and built by
 allow-listed through `.gitignore`; only reviewed configuration files are
 tracked.
+
+## Session Sounds
+
+The tracked sounds in `.local/share/session-sounds/` play asynchronously when
+the wallpaper transition changes: `session-login.wav` plays during an intro
+and `session-logout.wav` plays during an exit. This covers graphical session
+startup, lock/unlock transitions, and the existing shutdown animation. The
+helper prefers `paplay` and falls back to `aplay`; if neither is available,
+the transition continues without sound.
 
 ## Mission Center
 

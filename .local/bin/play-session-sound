@@ -1,0 +1,25 @@
+#!/bin/sh
+
+set -eu
+
+case "${1:-}" in
+    login)
+        sound="$HOME/.local/share/session-sounds/session-login.wav"
+        ;;
+    logout)
+        sound="$HOME/.local/share/session-sounds/session-logout.wav"
+        ;;
+    *)
+        exit 2
+        ;;
+esac
+
+[ -f "$sound" ] || exit 0
+
+# Prefer the PipeWire/PulseAudio-compatible player, but keep the fallback
+# usable on systems that only provide ALSA utilities.
+if command -v paplay >/dev/null 2>&1; then
+    nohup paplay "$sound" >/dev/null 2>&1 </dev/null &
+elif command -v aplay >/dev/null 2>&1; then
+    nohup aplay "$sound" >/dev/null 2>&1 </dev/null &
+fi

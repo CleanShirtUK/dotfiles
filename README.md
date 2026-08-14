@@ -4,7 +4,7 @@ Personal Hyprland and Noctalia configuration.
 
 ## Dependencies
 
-- Hyprland and Hypridle
+- Hyprland, Hypridle, and Hyprlock
 - Noctalia
 - `hyprglass` plugin
 - HyprWindowShade plugin, built by `.local/bin/install-hyprwindowshade`

@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+set -u
+
+for delay in 3 8 15; do
+    sleep "$delay"
+    monitor=$(hyprctl monitors -j 2>/dev/null |
+        jq -r 'first(.[] | select(.dpmsStatus == false) | .name) // empty')
+    [[ -n "$monitor" ]] || continue
+    hyprctl dispatch "hl.dsp.dpms({ state = \"on\", monitor = \"$monitor\" })" \
+        >/dev/null 2>&1 || true
+done

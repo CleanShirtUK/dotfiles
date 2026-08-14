@@ -20,10 +20,10 @@ set_restore_animation_speeds() {
     hyprctl eval 'hl.animation({ leaf = "windowsIn", enabled = true, speed = 8.2, bezier = "easeOutQuint", style = "popin 80%" })' >/dev/null || true
     hyprctl eval 'hl.animation({ leaf = "windows", enabled = true, speed = 8.7, bezier = "easeInOutCubic" })' >/dev/null
     hyprctl eval 'hl.animation({ leaf = "windowsMove", enabled = true, speed = 8.55, bezier = "easeInOutCubic", style = "slide" })' >/dev/null || true
-    hyprctl eval 'hl.animation({ leaf = "fadeIn", enabled = true, speed = 4.5, bezier = "easeOutQuint" })' >/dev/null
-    hyprctl eval 'hl.animation({ leaf = "workspaces", enabled = true, speed = 6.0, bezier = "easeInOutCubic", style = "fade" })' >/dev/null
-    hyprctl eval 'hl.animation({ leaf = "workspacesIn", enabled = true, speed = 7.35, bezier = "easeInOutCubic", style = "fade" })' >/dev/null
-    hyprctl eval 'hl.animation({ leaf = "workspacesOut", enabled = true, speed = 6.0, bezier = "easeInOutCubic", style = "fade" })' >/dev/null
+    hyprctl eval 'hl.animation({ leaf = "fadeIn", enabled = true, speed = 2.5, bezier = "easeOutQuint" })' >/dev/null
+    hyprctl eval 'hl.animation({ leaf = "workspaces", enabled = true, speed = 6.0, bezier = "easeInOutCubic", style = "slidefadevert -100%" })' >/dev/null
+    hyprctl eval 'hl.animation({ leaf = "workspacesIn", enabled = true, speed = 7.35, bezier = "easeInOutCubic", style = "slidefadevert -100%" })' >/dev/null
+    hyprctl eval 'hl.animation({ leaf = "workspacesOut", enabled = true, speed = 6.0, bezier = "easeInOutCubic", style = "slidefadevert -100%" })' >/dev/null
 }
 
 set_normal_animation_speeds() {

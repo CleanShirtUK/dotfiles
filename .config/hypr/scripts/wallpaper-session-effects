@@ -28,7 +28,8 @@ while :; do
         # Restore workspaces after Noctalia has accepted the reveal request.
         for _ in 1 2 3 4 5 6 7 8 9 10; do
             if noctalia msg status 2>/dev/null | jq -e '.barVisible == true' >/dev/null; then
-                sleep 0.5
+                # Let the wallpaper and shell reveal settle before restoring windows.
+                sleep 1.0
                 break
             fi
             sleep 0.1

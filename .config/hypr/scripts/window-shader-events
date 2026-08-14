@@ -4,10 +4,15 @@ set -u
 
 socket="$XDG_RUNTIME_DIR/hypr/$HYPRLAND_INSTANCE_SIGNATURE/.socket2.sock"
 shader="$HOME/.config/hypr/shaders/window-ripple.glsl"
+focus_shader="$HOME/.config/hypr/shaders/focus-ripple.glsl"
+wezterm_shader="$HOME/.config/hypr/shaders/wezterm-ripple.glsl"
+focus_wezterm_shader="$HOME/.config/hypr/shaders/focus-wezterm-ripple.glsl"
 state_dir="${XDG_RUNTIME_DIR}/hypr-window-shader"
 lock_file="$state_dir/daemon.lock"
 active_windows="$state_dir/active-windows"
+focused_window="$state_dir/focused-window"
 duration="2.0"
+focus_duration="0.7"
 open_delay="0.05"
 
 mkdir -p "$state_dir"
@@ -34,6 +39,13 @@ set_window_shader() {
     hyprctl eval "$command" >/dev/null 2>&1 || true
 }
 
+shader_for_class() {
+    case "$1" in
+        wezterm|WezTerm|org.wezfurlong.wezterm) printf '%s\n' "$wezterm_shader" ;;
+        *) printf '%s\n' "$shader" ;;
+    esac
+}
+
 remember_window() {
     local address="$1"
     grep -Fqx -- "$address" "$active_windows" 2>/dev/null || printf '%s\n' "$address" >> "$active_windows"
@@ -49,11 +61,12 @@ forget_window() {
 }
 
 animate_window() {
-    local address="$1"
+    local address="$1" class="$2" effect_shader
     if grep -Fqx -- "$address" "$active_windows" 2>/dev/null; then
         return 0
     fi
     remember_window "$address"
+    effect_shader="$(shader_for_class "$class")"
     sleep "$open_delay"
     # openwindow can arrive before the new client is present in the plugin's
     # window list. Wait for the address-targeted API to be able to find it.
@@ -64,7 +77,7 @@ animate_window() {
         fi
         sleep 0.05
     done
-    set_window_shader "$address" "$shader"
+    set_window_shader "$address" "$effect_shader"
     (
         sleep "$duration"
         set_window_shader "$address" clear
@@ -78,6 +91,39 @@ clear_window() {
     forget_window "$address"
 }
 
+animate_focus() {
+    local address="$1" class="$2" previous generation effect_shader
+    [[ -n "$address" ]] || return 0
+    previous=""
+    [[ -f "$focused_window" ]] && read -r previous _ < "$focused_window"
+    [[ "$previous" == "$address" ]] && return 0
+    [[ -n "$previous" && "$previous" != "$address" ]] && set_window_shader "$previous" clear
+    # Let a newly opened window finish its spawn effect instead of replacing it.
+    if grep -Fqx -- "$address" "$active_windows" 2>/dev/null; then
+        return 0
+    fi
+
+    generation="$(date +%s%N)"
+    printf '%s %s\n' "$address" "$generation" > "$focused_window"
+    if excluded_class "$class"; then
+        set_window_shader "$address" clear
+        return 0
+    fi
+
+    effect_shader="$focus_shader"
+    case "$class" in
+        wezterm|WezTerm|org.wezfurlong.wezterm) effect_shader="$focus_wezterm_shader" ;;
+    esac
+    set_window_shader "$address" "$effect_shader"
+    (
+        sleep "$focus_duration"
+        if [[ -f "$focused_window" ]] && read -r current current_generation < "$focused_window" &&
+            [[ "$current" == "$address" && "$current_generation" == "$generation" ]]; then
+            set_window_shader "$address" clear
+        fi
+    ) &
+}
+
 while :; do
     [[ -S "$socket" ]] || { sleep 0.2; continue; }
     while IFS= read -r event; do
@@ -86,10 +132,22 @@ while :; do
                 data="${event#openwindow>>}"
                 IFS=',' read -r address _workspace class _title <<< "$data"
                 event_class="$class"
-                excluded_class "$class" || animate_window "$address"
+                excluded_class "$class" || animate_window "$address" "$class"
                 ;;
             closewindow\>\>*)
                 clear_window "${event#closewindow>>}"
+                ;;
+            activewindow\>\>*)
+                data="${event#activewindow>>}"
+                IFS=',' read -r class _title <<< "$data"
+                address="$(hyprctl -j activewindow 2>/dev/null | jq -r '.address // empty')"
+                animate_focus "$address" "$class"
+                ;;
+            activewindowv2\>\>*)
+                address="${event#activewindowv2>>}"
+                [[ "$address" == 0x* ]] || address="0x$address"
+                class="$(hyprctl -j clients 2>/dev/null | jq -r --arg address "$address" 'first(.[] | select(.address == $address) | .class) // empty')"
+                animate_focus "$address" "$class"
                 ;;
         esac
     done < <(socat -u "UNIX-CONNECT:$socket" - 2>/dev/null)

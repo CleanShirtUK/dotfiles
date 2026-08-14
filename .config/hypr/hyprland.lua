@@ -38,6 +38,8 @@ hl.on("hyprland.start", function()
     hl.exec_cmd("dbus-update-activation-environment --systemd --all")
     hl.exec_cmd("systemctl --user import-environment WAYLAND_DISPLAY XDG_CURRENT_DESKTOP HYPRLAND_INSTANCE_SIGNATURE QT_QPA_PLATFORMTHEME")
     hl.exec_cmd("systemctl --user start hyprland-session.target")
+    -- Restart after importing the session environment so hypridle can reach Wayland.
+    hl.exec_cmd("systemctl --user restart hypridle.service")
     hl.exec_cmd("systemctl --user restart localsend.service")
     hl.exec_cmd("systemctl --user start xdg-desktop-portal-hyprland")
     hl.exec_cmd([[sh -c 'hyprpm reload 2>/dev/null || true; hyprctl plugin load ]] .. hyprGlassPlugin .. [[ 2>/dev/null || true; hyprctl plugin load ]] .. hyprWindowShadePlugin .. [[ 2>/dev/null || true; systemctl --user restart window-shader-events.service; sleep 0.5; hyprctl reload config-only']])
@@ -56,7 +58,7 @@ hl.config({
         border_size = 2,
         col = {
             active_border = { colors = { "rgba(33ccffee)", "rgba(00ff99ee)" }, angle = 45 },
-            inactive_border = "rgba(595959aa)",
+            inactive_border = "rgba(59595900)",
         },
         resize_on_border = true,
         extend_border_grab_area = 20,
@@ -69,7 +71,7 @@ hl.config({
         rounding_power = 2,
         active_opacity = 0.95,
         inactive_opacity = 0.9,
-        shadow = { enabled = true, range = 4, render_power = 3, color = 0xee1a1a1a },
+        shadow = { enabled = true, range = 2, render_power = 5, color = 0xee1a1a1a },
     },
 
     animations = { enabled = true },
@@ -80,6 +82,10 @@ hl.config({
         mouse_refocus = false,
         sensitivity = 0,
         touchpad = { natural_scroll = false },
+    },
+
+    cursor = {
+        no_warps = true,
     },
 
     misc = {

@@ -64,15 +64,25 @@ the upstream build script and places the plugin at
 `~/.local/share/hyprland/plugins/HyprWindowShade.so`.
 
 `.config/hypr/scripts/window-shader-events` applies the tracked ripple shader
-to individual windows for 2 seconds after opening. The local patch adds an
-address-targeted shader API, an event-relative `effect_time` uniform, and a
-fallback for clients whose surfaces do not directly resolve to a top-level
-window. The ripple starts tightly at the center and decays exponentially with
-diffraction and chromatic separation. Steam game windows
-(`steam_app_*`) and Affinity are excluded because their existing compatibility
-rules disable animation and decoration behavior. The event listener applies the
-shader once per `openwindow` event after waiting for the target address to exist;
-window-title changes do not retrigger it.
+to individual windows for 2 seconds after opening and the subtler
+`focus-ripple.glsl` shader for 0.7 seconds after focus changes. The local patch
+adds an address-targeted shader API, an event-relative `effect_time` uniform,
+and a fallback for clients whose surfaces do not directly resolve to a
+top-level window. The opening ripple starts at the nearest window edge and
+decays inward with diffraction and chromatic separation; the focus ripple uses
+a shorter, reduced-strength edge effect. Steam game windows
+(`steam_app_*`) and Affinity are excluded from both effects because their
+existing compatibility rules disable animation and decoration behavior. The
+event listener applies the opening shader once per `openwindow` event after
+waiting for the target address to exist, and applies the focus shader on
+`activewindowv2` events, resolving the class from live client data. WezTerm
+uses moderate spawn and focus-specific variants to remain visible through its
+configured transparency; the shader does not modify WezTerm's normal opacity.
+A newly opened window's focus event does not replace its spawn effect.
+The WezTerm variants temporarily raise fragment alpha within the effect
+envelope so blank transparent terminals can show the animation; normal
+transparency returns when the effect ends. Window-title changes do not
+retrigger either effect.
 
 The patch is applied to the pinned HyprWindowShade checkout from
 `.config/hypr/patches/hyprwindowshade-per-window-effects.patch` before each

@@ -28,6 +28,9 @@
 !.config/wezterm/wezterm.lua
 !.config/wezterm/colors/
 !.config/wezterm/colors/Noctalia.toml
+!.config/ferrosonic/
+!.config/ferrosonic/themes/
+!.config/ferrosonic/themes/noctalia.toml
 !.config/systemd/
 !.config/systemd/user/
 !.config/systemd/user/hyprland-session.target

@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+client="$(hyprctl -j activewindow)"
+floating="$(jq -r '.floating // false' <<<"$client")"
+
+hyprctl dispatch 'hl.dsp.window.float({ action = "toggle" })' >/dev/null
+
+if [[ "$floating" != true ]]; then
+    sleep 0.05
+    hyprctl dispatch 'hl.dsp.window.resize({ x = 800, y = 600 })' >/dev/null
+fi

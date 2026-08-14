@@ -359,6 +359,9 @@ hl.window_rule({
 hl.window_rule({
     name = "wezterm-no-hyprbar",
     match = { class = "^org\\.wezfurlong\\.wezterm$" },
+    size = { 800, 600 },
+    center = true,
+    persistent_size = true,
 })
 
 hl.window_rule({ name = "move-hyprland-run", match = { class = "hyprland-run" }, move = "20 monitor_h-120", float = true })

@@ -1,3 +1,4 @@
 /* Keep theme, generated colors, and local overrides in separate layers. */
 @import url("noctalia.css");
 @import url("nautilus-overrides.css");
+@import url("shadow-overrides.css");

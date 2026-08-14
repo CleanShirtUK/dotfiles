@@ -1,0 +1,20 @@
+/* Keep GTK-rendered shadows inside the surface; Hyprland owns window shadows. */
+
+*:not(#phleg-shadow-exception) {
+    box-shadow: none;
+    text-shadow: none;
+    -gtk-icon-shadow: none;
+}
+
+popover,
+popover.background,
+popover.menu,
+popover.context-menu {
+    background: @popover_bg_color;
+    background-color: @popover_bg_color;
+    background-image: none;
+    border: none;
+    border-radius: 0;
+    box-shadow: none;
+    outline: none;
+}

@@ -17,6 +17,12 @@ Personal Hyprland and Noctalia configuration.
 - GameMode, with `gamemoded` and `gamemoderun` available
 - The `adw-gtk3-dark` GTK theme and `kora` icon theme
 
+GTK shadow handling is kept in the tracked `.config/gtk-3.0/shadow-overrides.css`
+and `.config/gtk-4.0/shadow-overrides.css` files. They remove GTK-rendered
+shadows and shadow gradients so transparent GTK surfaces do not produce box
+outlines when Hyprland composites them. The generated Noctalia CSS is not
+modified. Hyprland compositor shadows remain configured separately.
+
 The wallpaper project is installed and built by the helper above. Its source
 is allow-listed through `.gitignore`; only reviewed configuration files are
 tracked.

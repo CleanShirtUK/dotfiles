@@ -1,0 +1,70 @@
+/* Keep GTK-rendered shadows inside the surface; Hyprland owns window shadows. */
+
+*:not(#phleg-shadow-exception) {
+    box-shadow: none;
+    text-shadow: none;
+    -gtk-icon-shadow: none;
+    filter: none;
+}
+
+/* Libadwaita draws some shadows as dedicated nodes or gradients. */
+shadow,
+undershoot {
+    background-image: none;
+    opacity: 0;
+}
+
+/* Popovers are separate transparent surfaces, so make their menu area opaque. */
+popover,
+popover.background,
+popover.menu,
+popover.context-menu,
+popover > arrow,
+popover > contents {
+    background: @popover_bg_color;
+    background-color: @popover_bg_color;
+    background-image: none;
+    border: none;
+    border-radius: 0;
+    box-shadow: none;
+    outline: none;
+}
+
+/* Do not leave a translucent triangular extension on popup surfaces. */
+popover > arrow {
+    min-width: 0;
+    min-height: 0;
+    padding: 0;
+    margin: 0;
+    background: none;
+    background-color: transparent;
+    background-image: none;
+    border: none;
+    box-shadow: none;
+    opacity: 0;
+}
+
+/* Context menus and menus opened from a header retain deliberate rounding. */
+popover.context-menu,
+popover.context-menu > contents,
+headerbar popover.menu,
+headerbar popover.menu > contents,
+.nautilus-toolbar popover.menu,
+.nautilus-toolbar popover.menu > contents {
+    background: @popover_bg_color;
+    background-color: @popover_bg_color;
+    background-image: none;
+    border-radius: 12px;
+}
+
+/* Keep the Nautilus pathbar menu square so its popup surface has no halo. */
+.nautilus-pathbar > menubutton > popover,
+.nautilus-pathbar > menubutton > popover > contents,
+placessidebar popover,
+placessidebar popover > contents,
+.navigation-sidebar popover,
+.navigation-sidebar popover > contents {
+    background: @popover_bg_color;
+    background-color: @popover_bg_color;
+    border-radius: 0;
+}

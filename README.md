@@ -8,7 +8,7 @@ Personal Hyprland and Noctalia configuration.
 - Noctalia
 - `hyprglass` plugin
 - HyprWindowShade plugin, built by `.local/bin/install-hyprwindowshade`
-- `bash`, `flock`, `jq`, `socat`, `grim`, `slurp`, and `wl-copy`
+- `bash`, `flock`, `jq`, `socat`, `grim`, `slurp`, `wl-copy`, and `zenity`
 - LocalSend, installed system-wide from Flathub as `org.localsend.localsend_app`
 - GPU Screen Recorder, installed system-wide from Flathub as
   `com.dec05eba.gpu_screen_recorder`
@@ -39,13 +39,14 @@ Install GPU Screen Recorder system-wide from Flathub:
 .local/bin/install-gpu-screen-recorder
 ```
 
-The `.local/bin/gpu-screen-recorder-control` helper starts one recorder on the
-currently active Hyprland monitor, captures desktop output audio only, and
-maintains a five-minute replay buffer. Recordings are saved under
-`~/Videos/ScreenCap`.
+The `.local/bin/gpu-screen-recorder-control` helper maintains a dedicated
+five-minute replay buffer for `HDMI-A-1` and uses a monitor-selection dialog
+for normal recordings. Recordings are saved under `~/Videos/ScreenCap` and
+capture desktop output audio only.
 
-- `SUPER + SHIFT + R` toggles a normal recording.
-- `SUPER + SHIFT + Z` saves the previous five minutes as an instant replay.
+- `SUPER + SHIFT + R` opens a monitor chooser and starts a recording; pressing
+  it again stops the active normal recording.
+- `SUPER + SHIFT + Z` saves the previous five minutes from `HDMI-A-1`.
 
 The helper can also be controlled over SSH:
 

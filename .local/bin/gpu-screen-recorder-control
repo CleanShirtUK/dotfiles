@@ -3,52 +3,59 @@
 set -euo pipefail
 
 readonly app_id='com.dec05eba.gpu_screen_recorder'
-readonly socket_path="${XDG_RUNTIME_DIR:?}/gpu-screen-recorder.sock"
+readonly normal_socket_path="${XDG_RUNTIME_DIR:?}/gpu-screen-recorder-normal.sock"
+readonly replay_socket_path="${XDG_RUNTIME_DIR:?}/gpu-screen-recorder-replay.sock"
 readonly output_dir="${HOME}/Videos/ScreenCap"
 readonly replay_dir="${output_dir}/replays"
 readonly recording_dir="${output_dir}/recordings"
-readonly monitor_file="${XDG_RUNTIME_DIR}/gpu-screen-recorder.monitor"
-
-gsr() {
-    flatpak run --command=gpu-screen-recorder "$app_id" "$@"
-}
+readonly replay_monitor='HDMI-A-1'
 
 gsr_cli() {
-    flatpak run --command=gsr-cli "$app_id" -ipc "$socket_path" "$@"
+    local socket="$1"
+    shift
+    flatpak run --command=gsr-cli "$app_id" -ipc "$socket" "$@"
 }
 
-active_monitor() {
-    hyprctl activeworkspace -j | jq -r '.monitor // empty'
+normal_running() {
+    gsr_cli "$normal_socket_path" status >/dev/null 2>&1
 }
 
-running() {
-    gsr_cli status >/dev/null 2>&1
+replay_running() {
+    gsr_cli "$replay_socket_path" status >/dev/null 2>&1
 }
 
-start() {
-    local monitor
-    monitor="$(active_monitor)"
-    [[ -n "$monitor" ]] || {
-        printf 'Unable to determine the active Hyprland monitor.\n' >&2
-        exit 1
+choose_monitor() {
+    command -v zenity >/dev/null 2>&1 || {
+        printf 'zenity is required to choose a recording monitor.\n' >&2
+        return 1
     }
+    hyprctl -j monitors | jq -r '.[].name' | zenity \
+        --list \
+        --title='Select recording monitor' \
+        --text='Choose the monitor to record:' \
+        --column='Monitor' \
+        --hide-header \
+        --height=220 \
+        --width=360
+}
 
+start_replay() {
     mkdir -p "$replay_dir" "$recording_dir"
-    printf '%s\n' "$monitor" >"$monitor_file"
 
     setsid flatpak run --command=gpu-screen-recorder "$app_id" \
-        -w "$monitor" \
+        -w "$replay_monitor" \
         -f 60 \
         -a default_output \
         -c mp4 \
         -r 300 \
+        -restart-replay-on-save yes \
         -o "$replay_dir" \
         -ro "$recording_dir" \
-        -ipc "$socket_path" \
+        -ipc "$replay_socket_path" \
         </dev/null >>"$output_dir/gpu-screen-recorder.log" 2>&1 &
 
     for _ in {1..30}; do
-        running && return 0
+        replay_running && return 0
         sleep 0.1
     done
 
@@ -56,23 +63,57 @@ start() {
     exit 1
 }
 
+start_recording() {
+    local monitor="$1"
+    local output_file
+    mkdir -p "$recording_dir"
+    output_file="$recording_dir/Video_$(date +%Y-%m-%d_%H-%M-%S).mp4"
+
+    setsid flatpak run --command=gpu-screen-recorder "$app_id" \
+        -w "$monitor" \
+        -f 60 \
+        -a default_output \
+        -c mp4 \
+        -o "$output_file" \
+        -ipc "$normal_socket_path" \
+        </dev/null >>"$output_dir/gpu-screen-recorder.log" 2>&1 &
+
+    for _ in {1..30}; do
+        normal_running && return 0
+        sleep 0.1
+    done
+
+    printf 'GPU Screen Recorder did not start. See %s.\n' "$output_dir/gpu-screen-recorder.log" >&2
+    exit 1
+}
+
+record() {
+    local monitor
+    if normal_running; then
+        gsr_cli "$normal_socket_path" stop
+        return 0
+    fi
+    monitor="$(choose_monitor || true)"
+    [[ -n "$monitor" ]] || return 0
+    start_recording "$monitor"
+}
+
 case "${1:-}" in
-    toggle)
-        running || start
-        gsr_cli toggle-replay-recording
+    record|toggle)
+        record
         ;;
     replay)
-        running || start
-        gsr_cli save-replay 300
+        replay_running || start_replay
+        gsr_cli "$replay_socket_path" save-replay 300
         ;;
     stop)
-        running && gsr_cli stop || true
+        normal_running && gsr_cli "$normal_socket_path" stop || true
         ;;
     start)
-        running || start
+        replay_running || start_replay
         ;;
     *)
-        printf 'Usage: %s {toggle|replay|stop|start}\n' "${0##*/}" >&2
+        printf 'Usage: %s {record|replay|stop|start}\n' "${0##*/}" >&2
         exit 2
         ;;
 esac

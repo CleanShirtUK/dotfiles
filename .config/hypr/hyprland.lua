@@ -180,7 +180,7 @@ hl.bind(mainMod .. " + L", hl.dsp.exec_cmd(animateLock))
 hl.bind(mainMod .. " + M", hl.dsp.exec_cmd(animateShutdown))
 hl.bind("ALT + Return", hl.dsp.window.fullscreen({ mode = "fullscreen", action = "toggle" }))
 hl.bind(mainMod .. " + SHIFT + S", hl.dsp.exec_cmd([[grim -g "$(slurp)" - | wl-copy --type image/png]]))
-hl.bind(mainMod .. " + SHIFT + R", hl.dsp.exec_cmd(gpuScreenRecorder .. " toggle"))
+hl.bind(mainMod .. " + SHIFT + R", hl.dsp.exec_cmd(gpuScreenRecorder .. " record"))
 hl.bind(mainMod .. " + SHIFT + Z", hl.dsp.exec_cmd(gpuScreenRecorder .. " replay"))
 hl.bind("CTRL + SHIFT + Escape", hl.dsp.exec_cmd("flatpak run io.missioncenter.MissionCenter"))
 
@@ -313,6 +313,12 @@ hl.window_rule({
     match = { title = "^Extension:.*Bitwarden.*" },
     float = true,
     center = true,
+})
+
+hl.window_rule({
+    name = "float-gpu-screen-recorder-monitor-picker",
+    match = { class = "^zenity$" },
+    float = true,
 })
 
 hl.window_rule({

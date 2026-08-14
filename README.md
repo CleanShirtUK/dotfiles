@@ -51,6 +51,20 @@ The installer verifies upstream tag `v2.0.1` against commit
 user. Fedora dependencies are `nautilus-python`, `python3-gobject`,
 `procps-ng`, and `js-jquery`.
 
+## Zed
+
+The tracked Zed configuration uses the `Noctalia Dark Transparent` theme. Its
+title bar, toolbar, tab surface, status bar, and docked panels are transparent
+so the wallpaper remains visible, while editor and terminal surfaces use a
+4% Noctalia color wash with fully opaque text. The theme is selected in
+`.config/zed/settings.json`
+and is kept separate from Zed's machine-specific state.
+
+The Hyprland rule for Zed (`dev.zed.Zed`) keeps the client opaque, removes its
+compositor shadow, and applies the same 10px rounding used by the desktop.
+After deploying the dotfiles, restart Zed or run `zed: reload window` from the
+command palette to load the tracked theme.
+
 GTK shadow handling is kept in the tracked `.config/gtk-3.0/shadow-overrides.css`
 and `.config/gtk-4.0/shadow-overrides.css` files. They remove GTK-rendered
 shadows and shadow gradients so transparent GTK surfaces do not produce box

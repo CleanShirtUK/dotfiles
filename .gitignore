@@ -24,6 +24,10 @@
 !.config/gtk-4.0/settings.ini
 !.config/zen/
 !.config/zen/phleg-userChrome.css
+!.config/zed/
+!.config/zed/settings.json
+!.config/zed/themes/
+!.config/zed/themes/noctalia.json
 !.config/actions-for-nautilus/
 !.config/actions-for-nautilus/config.json
 !.config/kitty/

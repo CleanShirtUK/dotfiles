@@ -83,7 +83,7 @@ hl.config({
     decoration = {
         rounding = 10,
         rounding_power = 2,
-        active_opacity = 0.95,
+        active_opacity = 1,
         inactive_opacity = 0.9,
         blur = { new_optimizations = true },
         shadow = { enabled = true, range = 2, render_power = 5, color = 0xee1a1a1a },
@@ -329,6 +329,16 @@ hl.window_rule({
     match = { title = "^Settings.*$" },
     float = true,
     center = true,
+})
+
+-- Zed supplies its transparent chrome through the tracked theme; keep the
+-- client surface fully opaque so only those internal surfaces reveal the
+-- wallpaper.
+hl.window_rule({
+    name = "zed-appearance",
+    match = { class = "^dev\\.zed\\.Zed$" },
+    rounding = 10,
+    no_shadow = true,
 })
 
 hl.window_rule({

@@ -22,6 +22,8 @@
 !.config/gtk-4.0/noctalia.css
 !.config/gtk-4.0/shadow-overrides.css
 !.config/gtk-4.0/settings.ini
+!.config/zen/
+!.config/zen/phleg-userChrome.css
 !.config/kitty/
 !.config/kitty/kitty.conf
 !.config/kitty/themes/
@@ -60,3 +62,4 @@
 !.local/bin/install-gpu-screen-recorder
 !.local/bin/configure-mission-center
 !.local/bin/play-session-sound
+!.local/bin/configure-zen

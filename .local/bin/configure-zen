@@ -1,0 +1,86 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+readonly profile_ini="$HOME/.zen/profiles.ini"
+readonly installs_ini="$HOME/.zen/installs.ini"
+readonly source_css="$HOME/.config/zen/phleg-userChrome.css"
+readonly import_name='phleg-userChrome.css'
+readonly begin_marker='/* BEGIN PHLEG NOCTALIA OVERRIDES */'
+readonly end_marker='/* END PHLEG NOCTALIA OVERRIDES */'
+
+if [[ ! -f "$source_css" ]]; then
+    printf 'Tracked Zen CSS was not found: %s\n' "$source_css" >&2
+    exit 1
+fi
+
+if [[ ! -f "$profile_ini" ]]; then
+    printf 'Zen profile registry was not found: %s\n' "$profile_ini" >&2
+    exit 1
+fi
+
+profile_path=''
+
+# Zen's install registry points at the profile used by the installed build.
+if [[ -f "$installs_ini" ]]; then
+    while IFS= read -r line; do
+        case "$line" in
+            Default=*)
+                profile_path=${line#Default=}
+                break
+                ;;
+        esac
+    done < "$installs_ini"
+fi
+
+# Fall back to the profile marked Default in profiles.ini.
+if [[ -z "$profile_path" ]]; then
+    current_path=''
+    current_relative=1
+    while IFS= read -r line; do
+        case "$line" in
+            IsRelative=*) current_relative=${line#IsRelative=} ;;
+            Path=*) current_path=${line#Path=} ;;
+            Default=1)
+                profile_path=$current_path
+                break
+                ;;
+        esac
+    done < "$profile_ini"
+fi
+
+if [[ -z "$profile_path" ]]; then
+    printf 'Could not determine the active Zen profile from %s\n' "$profile_ini" >&2
+    exit 1
+fi
+
+if [[ "$profile_path" = /* ]]; then
+    profile_dir="$profile_path"
+else
+    profile_dir="$HOME/.zen/$profile_path"
+fi
+
+chrome_dir="$profile_dir/chrome"
+profile_css="$chrome_dir/$import_name"
+user_css="$chrome_dir/userChrome.css"
+
+[[ -d "$profile_dir" ]] || {
+    printf 'Zen profile directory was not found: %s\n' "$profile_dir" >&2
+    exit 1
+}
+
+mkdir -p "$chrome_dir"
+cp "$source_css" "$profile_css"
+
+if [[ ! -e "$user_css" ]]; then
+    printf '@import "%s";\n' "$import_name" > "$user_css"
+elif ! grep -Fq "$begin_marker" "$user_css"; then
+    cat >> "$user_css" <<EOF
+
+$begin_marker
+@import "$import_name";
+$end_marker
+EOF
+fi
+
+printf 'Zen overrides installed in %s. Restart Zen Browser to apply them.\n' "$profile_dir"

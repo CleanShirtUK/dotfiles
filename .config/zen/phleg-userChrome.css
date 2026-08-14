@@ -1,0 +1,257 @@
+/*
+ * Zen Browser overrides for the Phleg desktop.
+ *
+ * This file is loaded after Neo-Zen. Keep the browser content surface
+ * unchanged; only Zen's application sidebar is made transparent.
+ */
+
+/* Zen's vertical tabs sidebar is the navigator toolbox in the current UI. */
+#navigator-toolbox,
+#navigator-toolbox > *,
+#navigator-toolbox #TabsToolbar,
+#navigator-toolbox #TabsToolbar-customization-target,
+#navigator-toolbox #zen-sidebar-top-buttons,
+#navigator-toolbox #zen-tabs-wrapper,
+#navigator-toolbox #zen-sidebar-foot-buttons,
+#navigator-toolbox #tabbrowser-tabs,
+#navigator-toolbox #tabbrowser-arrowscrollbox {
+    background: transparent !important;
+    background-color: transparent !important;
+    box-shadow: none !important;
+}
+
+/* Some Zen toolbar components paint their own anonymous child surface. */
+#navigator-toolbox * {
+    background-color: transparent !important;
+    box-shadow: none !important;
+}
+
+/* Zen paints a separate generic toolbar background over the sidebar. */
+#navigator-toolbox #zen-toolbar-background,
+#navigator-toolbox #zen-toolbar-background::before,
+#navigator-toolbox #zen-toolbar-background::after {
+    background: transparent !important;
+    background-image: none !important;
+    opacity: 0 !important;
+}
+
+#navigator-toolbox #zen-toolbar-background {
+    display: none !important;
+}
+
+/* The URL bar is another rounded surface inside the sidebar toolbar. */
+#navigator-toolbox #urlbar,
+#navigator-toolbox #urlbar-background,
+#navigator-toolbox #urlbar-input-container,
+#navigator-toolbox .urlbar-input-container,
+#navigator-toolbox #urlbar-input {
+    background: transparent !important;
+    background-color: transparent !important;
+    background-image: none !important;
+    box-shadow: none !important;
+}
+
+/* Clear the titlebar's shorthand background layers as well. */
+#navigator-toolbox #titlebar,
+#navigator-toolbox #titlebar > *,
+#navigator-toolbox #titlebar .toolbar-items,
+#navigator-toolbox #titlebar .titlebar-spacer,
+#navigator-toolbox #nav-bar {
+    background: transparent !important;
+    background-color: transparent !important;
+    background-image: none !important;
+    box-shadow: none !important;
+}
+
+/* Remove the opaque splitter geometry at the sidebar/content boundary. */
+#zen-sidebar-splitter,
+#zen-sidebar-splitter::before,
+#sidebar-splitter {
+    width: 1px !important;
+    background: transparent !important;
+    background-color: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+    opacity: 0 !important;
+}
+
+/* Restore the Neo-Zen pill treatment without its heavy active box. */
+#navigator-toolbox .tabbrowser-tab[zen-essential] .tab-background {
+    background: color-mix(
+        in srgb,
+        var(--zen-primary-color, #7aa2f7) 12%,
+        transparent
+    ) !important;
+    border-radius: var(--Roundness, 50px) !important;
+    border: 1px solid color-mix(
+        in srgb,
+        var(--zen-primary-color, #7aa2f7) 24%,
+        transparent
+    ) !important;
+    box-shadow: inset 0 0 12px color-mix(
+        in srgb,
+        var(--zen-primary-color, #7aa2f7) 20%,
+        transparent
+    ) !important;
+}
+
+#navigator-toolbox .tabbrowser-tab[zen-essential]:hover .tab-background {
+    background: color-mix(
+        in srgb,
+        var(--zen-primary-color, #7aa2f7) 12%,
+        transparent
+    ) !important;
+    border-color: transparent !important;
+    box-shadow: inset 0 0 12px color-mix(
+        in srgb,
+        var(--zen-primary-color, #7aa2f7) 20%,
+        transparent
+    ) !important;
+}
+
+#navigator-toolbox .tabbrowser-tab[zen-essential][visuallyselected] .tab-background,
+#navigator-toolbox .tabbrowser-tab[zen-essential]:hover .tab-background {
+    border: none !important;
+    box-shadow: inset 0 0 12px color-mix(
+        in srgb,
+        var(--zen-primary-color, #7aa2f7) 20%,
+        transparent
+    ) !important;
+}
+
+#navigator-toolbox .tabbrowser-tab[zen-essential][visuallyselected] .tab-background::before {
+    background: transparent !important;
+    box-shadow: none !important;
+    margin: 0 !important;
+}
+
+#navigator-toolbox .tabbrowser-tab[zen-essential][visuallyselected]:hover .tab-background::before {
+    background: transparent !important;
+    box-shadow: none !important;
+}
+
+/* Keep hover/selection styling on the pill, not on the tab's outer box. */
+#navigator-toolbox .tabbrowser-tab[zen-essential],
+#navigator-toolbox .tabbrowser-tab[zen-essential] > .tab-stack,
+#navigator-toolbox .tabbrowser-tab[zen-essential] > .tab-stack > .tab-content {
+    background: transparent !important;
+    background-color: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+    outline: none !important;
+}
+
+#navigator-toolbox .tabbrowser-tab[zen-essential] .tab-background::before,
+#navigator-toolbox .tabbrowser-tab[zen-essential] .tab-background::after {
+    content: none !important;
+    display: none !important;
+    box-shadow: none !important;
+}
+
+/* Zen/Firefox also supplies the selected-tab effect through custom variables. */
+#zen-essentials .tabbrowser-tab[zen-essential],
+#zen-essentials .tabbrowser-tab[zen-essential] > .tab-stack,
+#zen-essentials .tabbrowser-tab[zen-essential] .tab-background {
+    --tab-selected-shadow: none !important;
+    --tab-hover-background-color: transparent !important;
+    --tab-background-color-selected: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+}
+
+#zen-essentials .tabbrowser-tab[zen-essential]:hover,
+#zen-essentials .tabbrowser-tab[zen-essential][selected],
+#zen-essentials .tabbrowser-tab[zen-essential][visuallyselected] {
+    background: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+    outline: none !important;
+}
+
+/* Reduce Neo-Zen's active and hover outlines on ordinary tabs. */
+#navigator-toolbox .tabbrowser-tab:not([zen-essential])[selected] .tab-background,
+#navigator-toolbox .tabbrowser-tab:not([zen-essential])[multiselected="true"] .tab-background,
+#navigator-toolbox .tabbrowser-tab:not([zen-essential]):hover .tab-background {
+    border-width: 1px !important;
+    box-shadow: 0 0 2px color-mix(in srgb, currentColor 22%, transparent) !important;
+}
+
+/* Keep the render surface softly rounded without Zen's heavy container box. */
+#zen-tabbox-wrapper,
+#tabbrowser-tabbox,
+#tabbrowser-tabpanels,
+#tabbrowser-tabbox .browserSidebarContainer,
+#tabbrowser-tabbox .browserContainer {
+    border-radius: 16px !important;
+    overflow: clip !important;
+    box-shadow: none !important;
+}
+
+#zen-tabbox-wrapper,
+#tabbrowser-tabbox,
+#tabbrowser-tabpanels,
+#tabbrowser-tabbox .browserSidebarContainer,
+#tabbrowser-tabbox .browserContainer {
+    border: none !important;
+    box-shadow: none !important;
+}
+
+/* The optional top bar lives in the content-navbar wrapper, outside the tabs. */
+#zen-appcontent-navbar-wrapper,
+#zen-appcontent-navbar-container,
+#zen-appcontent-navbar-wrapper > * {
+    background: transparent !important;
+    background-color: transparent !important;
+    background-image: none !important;
+    border: none !important;
+    box-shadow: none !important;
+}
+
+/* Keep the tab and workspace controls readable without adding a panel fill. */
+#navigator-toolbox toolbarbutton:hover,
+#navigator-toolbox toolbarbutton[open="true"],
+#navigator-toolbox .tabbrowser-tab:hover,
+#navigator-toolbox .tabbrowser-tab[selected="true"] {
+    background-color: color-mix(
+        in srgb,
+        var(--zen-primary-color, #7aa2f7) 18%,
+        transparent
+    ) !important;
+}
+
+/* Do not let transparent Neo-Zen popup styling expose the wallpaper. */
+:is(menupopup, panel) {
+    --panel-background-color: #1a1b26 !important;
+    --panel-border-color: #414868 !important;
+    background-color: #1a1b26 !important;
+    background-image: none !important;
+    opacity: 1 !important;
+}
+
+#navigator-toolbox :is(menupopup, panel) {
+    background-color: #1a1b26 !important;
+    background-image: none !important;
+    opacity: 1 !important;
+}
+
+:is(menupopup, panel)::part(content) {
+    background-color: #1a1b26 !important;
+    background-image: none !important;
+    opacity: 1 !important;
+}
+
+:is(menupopup, panel) menu,
+:is(menupopup, panel) menuitem,
+:is(menupopup, panel) toolbarbutton,
+:is(menupopup, panel) .toolbarbutton-1 {
+    background-color: transparent !important;
+}
+
+:is(menupopup, panel) :is(menu, menuitem, toolbarbutton, .toolbarbutton-1):hover,
+:is(menupopup, panel) :is(menu, menuitem, toolbarbutton, .toolbarbutton-1)[_moz-menuactive="true"] {
+    background-color: color-mix(
+        in srgb,
+        var(--zen-primary-color, #7aa2f7) 60%,
+        #1a1b26 40%
+    ) !important;
+}

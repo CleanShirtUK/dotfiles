@@ -17,6 +17,19 @@ Personal Hyprland and Noctalia configuration.
 - GameMode, with `gamemoded` and `gamemoderun` available
 - The `adw-gtk3-dark` GTK theme and `kora` icon theme
 
+Zen Browser customization is installed with:
+
+```sh
+.local/bin/configure-zen
+```
+
+The helper discovers Zen's active profile from its profile registries, copies
+the tracked `.config/zen/phleg-userChrome.css` override into that profile, and
+adds one marker-managed import to `chrome/userChrome.css`. It preserves other
+profile CSS and is safe to run repeatedly. The override makes only Zen's
+application sidebar transparent; browser content and popup menus remain
+opaque.
+
 GTK shadow handling is kept in the tracked `.config/gtk-3.0/shadow-overrides.css`
 and `.config/gtk-4.0/shadow-overrides.css` files. They remove GTK-rendered
 shadows and shadow gradients so transparent GTK surfaces do not produce box

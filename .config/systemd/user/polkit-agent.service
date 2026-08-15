@@ -1,0 +1,10 @@
+[Unit]
+Description=GTK PolicyKit Authentication Agent
+PartOf=graphical-session.target
+After=graphical-session.target
+
+[Service]
+ExecStart=%h/.local/bin/start-polkit-agent
+Restart=on-failure
+RestartSec=2
+Slice=background.slice

@@ -53,6 +53,7 @@
 !.config/systemd/user/localsend.service
 !.config/systemd/user/wallpaper-session-effects.service
 !.config/systemd/user/game-mode.service
+!.config/systemd/user/polkit-agent.service
 !.local/share/
 !.local/share/color-schemes/
 !.local/share/color-schemes/noctalia.colors
@@ -69,9 +70,11 @@
 !.local/bin/gpu-screen-recorder-control
 !.local/bin/install-gpu-screen-recorder
 !.local/bin/configure-mission-center
+!.local/bin/configure-file-roller
 !.local/bin/play-session-sound
 !.local/bin/configure-zen
 !.local/bin/configure-obsidian
+!.local/bin/start-polkit-agent
 !.local/bin/install-actions-for-nautilus
 !.local/bin/nautilus-open-as-admin
 !.local/bin/nautilus-copy-path

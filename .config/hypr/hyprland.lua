@@ -38,7 +38,7 @@ hl.permission("/usr/(bin|local/bin)/hyprpm", "plugin", "allow")
 -- Session lifecycle
 
 hl.on("hyprland.start", function()
-    hl.exec_cmd("systemctl --user start plasma-polkit-agent.service")
+    hl.exec_cmd("systemctl --user start polkit-agent.service")
     hl.exec_cmd(scripts .. "/restore-minimized")
     hl.exec_cmd(scripts .. "/float-bitwarden-popup &")
     hl.exec_cmd(scripts .. "/dynamic-app-workspaces &")
@@ -282,7 +282,7 @@ for _, class in ipairs({
     "^qt6ct$",
     "^partitionmanager$",
     "^org\\.kde\\.discover$",
-    "^org\\.kde\\.ark$",
+    "^org\\.gnome\\.FileRoller$",
     "^org\\.gnome\\.DiskUtility$",
     "^gnome-disk-utility$",
     "^zenity$",

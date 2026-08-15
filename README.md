@@ -15,9 +15,25 @@ Personal Hyprland and Noctalia configuration.
   `com.dec05eba.gpu_screen_recorder`
 - The separate [`ps3-wave-wallpaper`](https://github.com/CleanShirtUK/ps3-wave-wallpaper) project, running in live-wallpaper-only mode
 - GameMode, with `gamemoded` and `gamemoderun` available
+- `mate-polkit`, used as the GTK3 PolicyKit authentication agent
 - The `adw-gtk3-dark` GTK theme and `kora` icon theme
 - Actions For Nautilus `v2.0.1`, installed by
   `.local/bin/install-actions-for-nautilus`
+
+## PolicyKit
+
+The Hyprland session uses the GTK3 MATE PolicyKit authentication agent through
+the tracked `polkit-agent.service`. Fedora installation:
+
+```sh
+sudo dnf install mate-polkit
+systemctl --user daemon-reload
+systemctl --user start polkit-agent.service
+```
+
+The service starts the agent through `.local/bin/start-polkit-agent`, which
+checks the standard MATE agent paths instead of hard-coding one distribution's
+layout. The KDE PolicyKit agent is not required by this configuration.
 
 Zen Browser customization is installed with:
 
@@ -151,6 +167,26 @@ transparency overrides, with:
 
 The helper links the tracked GTK4 configuration into Mission Center's
 per-user Flatpak configuration and applies a per-user Flatpak override. It is
+safe to run repeatedly and does not modify the system-wide Flatpak
+installation.
+
+## File Roller
+
+File Roller is installed from Flathub and runs in a sandbox with its own GTK
+configuration directory. Install it system-wide with:
+
+```sh
+sudo flatpak install --system flathub org.gnome.FileRoller
+```
+
+Apply the tracked GTK4 color, shadow, and icon configuration with:
+
+```sh
+.local/bin/configure-file-roller
+```
+
+The helper links the tracked GTK4 configuration into File Roller's per-user
+Flatpak configuration and applies per-user theme and icon overrides. It is
 safe to run repeatedly and does not modify the system-wide Flatpak
 installation.
 

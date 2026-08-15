@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+for agent in \
+    /usr/libexec/polkit-mate-authentication-agent-1 \
+    /usr/lib/polkit-mate/polkit-mate-authentication-agent-1; do
+    if [[ -x "$agent" ]]; then
+        exec "$agent"
+    fi
+done
+
+if agent_path=$(command -v polkit-mate-authentication-agent-1); then
+    exec "$agent_path"
+fi
+
+printf 'No supported GTK3 Polkit authentication agent was found.\n' >&2
+exit 1

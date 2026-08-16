@@ -6,6 +6,7 @@ After=hyprland-session.target
 [Service]
 ExecStartPre=/usr/bin/mkdir -p %h/.cache/ps3-wave-wallpaper
 ExecStart=%h/.local/src/ps3-wave-wallpaper/ps3-wave-wallpaper %h/.local/src/ps3-wave-wallpaper/wave.frag
+EnvironmentFile=-%h/.local/src/ps3-wave-wallpaper/ps3-wave-wallpaper.conf
 Environment=PS3_WAVE_DISABLE_SNAPSHOTS=1
 Environment=PS3_WAVE_SKIP_INTRO=1
 Environment=PS3_WAVE_START_HIDDEN=1

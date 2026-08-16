@@ -1,0 +1,136 @@
+#!/usr/bin/env python3
+"""Resolve an Orbit application class to workspace policy fields."""
+
+from __future__ import annotations
+
+import argparse
+import re
+import tomllib
+from pathlib import Path
+
+
+POLICIES = Path.home() / ".config/orbit/app-policies.toml"
+IDENTITIES = Path.home() / ".config/orbit/application-identities.toml"
+
+
+def load_policies() -> dict:
+    try:
+        with POLICIES.open("rb") as stream:
+            return tomllib.load(stream)
+    except FileNotFoundError:
+        return {"defaults": {}}
+    except tomllib.TOMLDecodeError as error:
+        raise SystemExit(f"Invalid Orbit application policies: {error}") from error
+
+
+def load_identities() -> dict:
+    try:
+        with IDENTITIES.open("rb") as stream:
+            return tomllib.load(stream).get("application", {})
+    except FileNotFoundError:
+        return {}
+    except tomllib.TOMLDecodeError as error:
+        raise SystemExit(f"Invalid Orbit application identities: {error}") from error
+
+
+def matches(rule: dict, app_class: str, title: str, floating: bool, xwayland: bool, workspace: str, pin: bool, fullscreen: bool) -> bool:
+    match_type = rule.get("match_type")
+    if match_type:
+        value = str(rule.get("match_pattern") or rule.get("match_value", ".*"))
+        if match_type == "class":
+            if not re.search(value, app_class):
+                return False
+        elif match_type == "title":
+            if not re.search(value, title):
+                return False
+        elif match_type == "xwayland" and xwayland != str(rule.get("match_value", "true")).lower() == "true":
+            return False
+        elif match_type == "floating" and floating != str(rule.get("match_value", "true")).lower() == "true":
+            return False
+        elif match_type == "fullscreen" and fullscreen != str(rule.get("match_value", "true")).lower() == "true":
+            return False
+        elif match_type == "pin" and pin != str(rule.get("match_value", "true")).lower() == "true":
+            return False
+        elif match_type == "workspace" and workspace != str(rule.get("match_value", "")):
+            return False
+        application = str(rule.get("application", ""))
+        if application and match_type in {"title", "xwayland", "floating", "fullscreen", "pin", "workspace"}:
+            classes = load_identities().get(application, {}).get("classes", [])
+            if classes and app_class not in classes:
+                return False
+        return True
+
+    application = str(rule.get("application", ""))
+    if application:
+        classes = load_identities().get(application, {}).get("classes", [])
+        if classes and app_class in classes:
+            return True
+    try:
+        class_match = re.search(rule.get("class_pattern", ".*"), app_class)
+        title_pattern = rule.get("title_pattern")
+        title_match = not title_pattern or re.search(title_pattern, title)
+    except re.error as error:
+        raise SystemExit(f"Invalid Orbit application policy pattern: {error}") from error
+    return bool(class_match and title_match)
+
+
+def resolve(app_class: str, title: str, floating: bool = False, xwayland: bool = False, workspace: str = "", pin: bool = False, fullscreen: bool = False) -> dict:
+    config = load_policies()
+    result = {
+        "monitor_role": "focused",
+        "workspace_policy": "dedicated",
+        "children": "inherit",
+        "inherit_exclude": "",
+    }
+    result.update(config.get("defaults", {}))
+
+    application_rules = sorted(config.get("rule", []), key=lambda rule: int(rule.get("priority", 100)))
+    for rule in application_rules:
+        if matches(rule, app_class, title, floating, xwayland, workspace, pin, fullscreen):
+            result.update({key: value for key, value in rule.items() if key in {"monitor_role", "workspace_policy", "children", "inherit_exclude"} and value not in (None, "")})
+            return result
+
+    for rule in config.get("policy", []):
+        if matches(rule, app_class, title, floating, xwayland, workspace, pin, fullscreen):
+            result.update({key: value for key, value in rule.items() if key not in {"name", "class_pattern", "title_pattern"}})
+            break
+
+    return result
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(prog="orbit-app-policy")
+    subparsers = parser.add_subparsers(dest="command", required=True)
+    command = subparsers.add_parser("resolve", help="resolve application policy")
+    command.add_argument("--class", dest="app_class", required=True)
+    command.add_argument("--title", default="")
+    command.add_argument("--floating", default="false")
+    command.add_argument("--xwayland", default="false")
+    command.add_argument("--workspace", default="")
+    command.add_argument("--pin", default="false")
+    command.add_argument("--fullscreen", default="false")
+    args = parser.parse_args()
+
+    if args.command != "resolve":
+        raise SystemExit(2)
+
+    policy = resolve(
+        args.app_class,
+        args.title,
+        args.floating.lower() == "true",
+        args.xwayland.lower() == "true",
+        args.workspace,
+        args.pin.lower() == "true",
+        args.fullscreen.lower() == "true",
+    )
+    fields = (
+        policy.get("monitor_role", "focused"),
+        policy.get("workspace_policy", "dedicated"),
+        policy.get("children", "inherit"),
+        policy.get("inherit_exclude", ""),
+    )
+    print("\t".join(str(field) for field in fields))
+
+
+if __name__ == "__main__":
+    main()

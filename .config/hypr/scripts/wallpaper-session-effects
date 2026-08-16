@@ -4,37 +4,39 @@ set -eu
 
 renderer="$HOME/.config/hypr/scripts/wallpaper-animation"
 
-# Noctalia may start a moment after this service, so retry the initial hide.
-for _ in 1 2 3 4 5 6 7 8 9 10; do
-    noctalia msg bar-hide >/dev/null 2>&1 || true
-    sleep 0.5
-    if noctalia msg status >/dev/null 2>&1; then
-        break
-    fi
-done
-"$renderer" intro
-noctalia msg bar-show >/dev/null 2>&1 || true
-noctalia msg dock-show >/dev/null 2>&1 || true
+reveal_session() {
+    "$renderer" intro
+    noctalia msg bar-show >/dev/null 2>&1 || true
+    noctalia msg dock-show >/dev/null 2>&1 || true
+    # Restore workspaces after Noctalia has accepted the reveal request.
+    for _ in 1 2 3 4 5 6 7 8 9 10; do
+        if noctalia msg status 2>/dev/null | jq -e '.barVisible == true' >/dev/null; then
+            # Let the wallpaper and shell reveal settle before restoring windows.
+            sleep 1.0
+            break
+        fi
+        sleep 0.1
+    done
+    "$HOME/.config/hypr/scripts/blank-special-workspaces" restore
+}
 
-locked=0
-while :; do
-    if pidof hyprlock >/dev/null 2>&1; then
-        locked=1
-    elif [ "$locked" -eq 1 ]; then
-        locked=0
-        "$renderer" intro
-        noctalia msg bar-show >/dev/null 2>&1 || true
-        noctalia msg dock-show >/dev/null 2>&1 || true
-        # Restore workspaces after Noctalia has accepted the reveal request.
-        for _ in 1 2 3 4 5 6 7 8 9 10; do
-            if noctalia msg status 2>/dev/null | jq -e '.barVisible == true' >/dev/null; then
-                # Let the wallpaper and shell reveal settle before restoring windows.
-                sleep 1.0
-                break
-            fi
-            sleep 0.1
-        done
-        "$HOME/.config/hypr/scripts/blank-special-workspaces" restore
-    fi
-    sleep 0.25
-done
+startup_session() {
+    # Noctalia may start a moment after this service, so retry the initial hide.
+    for _ in 1 2 3 4 5 6 7 8 9 10; do
+        noctalia msg bar-hide >/dev/null 2>&1 || true
+        sleep 0.5
+        if noctalia msg status >/dev/null 2>&1; then
+            break
+        fi
+    done
+    reveal_session
+}
+
+case "${1:-startup}" in
+    startup) startup_session ;;
+    unlock) reveal_session ;;
+    *)
+        printf 'usage: %s [startup|unlock]\n' "$0" >&2
+        exit 2
+        ;;
+esac

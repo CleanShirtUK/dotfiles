@@ -3,6 +3,8 @@
 set -u
 
 socket="$XDG_RUNTIME_DIR/hypr/$HYPRLAND_INSTANCE_SIGNATURE/.socket2.sock"
+monitor_resolver="$HOME/.local/bin/orbit-monitor"
+policy_resolver="$HOME/.local/bin/orbit-app-policy"
 state_dir="${XDG_RUNTIME_DIR}/hypr-dynamic-workspaces"
 mkdir -p "$state_dir"
 lock_file="$state_dir/.lock"
@@ -18,13 +20,6 @@ done
 
 # These classes are routed by process ancestry. The first window from a
 # process tree reserves a workspace; child windows stay with that instance.
-managed_class() {
-    case "$1" in
-        Inkscape|org.inkscape.Inkscape|resolve|com.blackmagicdesign.resolve|Affinity|affinity|affinity.exe|md.Obsidian|md.obsidian.Obsidian|feishin|org.jeffvli.feishin|dev.zed.Zed|Zed|zen|steam|steam_app_*|obs|com.obsproject.Studio|darktable|org.darktable.darktable) return 0 ;;
-        *) return 1 ;;
-    esac
-}
-
 client_json() {
     hyprctl clients -j 2>/dev/null
 }
@@ -36,15 +31,40 @@ reserved_workspace() {
     esac
 }
 
+reserved_anchor_class() {
+    case "$1" in
+        phleg-reserved-anchor-*|org.quickshell) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
+gaming_monitor() {
+    "$monitor_resolver" resolve gaming 2>/dev/null || true
+}
+
+move_window_to_monitor() {
+    local monitor="$1" address="$2" workspace
+    workspace="$(hyprctl monitors -j 2>/dev/null | jq -r --arg monitor "$monitor" \
+        'first(.[] | select(.name == $monitor) | .activeWorkspace.name) // empty')"
+    [[ -n "$workspace" ]] || return 1
+    hyprctl dispatch --quiet \
+        "hl.dsp.window.move({ workspace = \"$workspace\", window = \"address:0x${address#0x}\" })" \
+        >/dev/null 2>&1
+}
+
 monitor_name() {
     hyprctl monitors -j | jq -r --argjson index "$1" 'first(.[] | select(.id == $index) | .name) // empty'
 }
 
 find_workspace_for_pid() {
-    local pid="$1" parent workspace
+    local pid="$1" excluded_pattern="${2:-}" parent workspace state_class
     while [[ "$pid" =~ ^[0-9]+$ && "$pid" -gt 1 ]]; do
         workspace="$(awk -F= '$1 == "workspace" { print $2; exit }' "$state_dir/$pid" 2>/dev/null || true)"
-        [[ -n "$workspace" ]] && { printf '%s\n' "$workspace"; return 0; }
+        state_class="$(awk -F= '$1 == "class" { print $2; exit }' "$state_dir/$pid" 2>/dev/null || true)"
+        if [[ -n "$workspace" && ( -z "$excluded_pattern" || ! "$state_class" =~ $excluded_pattern ) ]]; then
+            printf '%s\n' "$workspace"
+            return 0
+        fi
         parent="$(ps -o ppid= -p "$pid" 2>/dev/null | tr -d ' ')"
         [[ "$parent" =~ ^[0-9]+$ && "$parent" != "$pid" ]] || break
         pid="$parent"
@@ -52,11 +72,41 @@ find_workspace_for_pid() {
     return 1
 }
 
+active_application_workspace() {
+    local address="$1"
+    client_json | jq -r --arg address "0x${address#0x}" '
+        [ .[]
+          | select(.address != $address and .mapped and (.hidden | not))
+          | select(.class != "org.quickshell")
+          | select((.workspace.name // "") | startswith("special:") | not)
+        ]
+        | sort_by(.focusHistoryID)
+        | first
+        | .workspace.name // empty
+    '
+}
+
+scan_floating_transitions() {
+    local address class title floating xwayland workspace pin fullscreen policy_line monitor_role workspace_policy children_policy inherit_exclude marker previous
+    while IFS=$'\t' read -r address class title floating xwayland workspace pin fullscreen; do
+        [[ -n "$address" ]] || continue
+        policy_line="$("$policy_resolver" resolve --class "$class" --title "$title" --floating "$floating" --xwayland "$xwayland" --workspace "$workspace" --pin "$pin" --fullscreen "$fullscreen" 2>/dev/null || true)"
+        IFS=$'\t' read -r monitor_role workspace_policy children_policy inherit_exclude <<<"$policy_line"
+        [[ "$workspace_policy" == "floating" ]] || continue
+        marker="$state_dir/.floating-${address#0x}"
+        previous=""
+        [[ -f "$marker" ]] && read -r previous < "$marker"
+        printf '%s\n' "$floating" > "$marker"
+        [[ -n "$previous" && "$previous" != "$floating" ]] || continue
+        route_window "$address" &
+    done < <(client_json | jq -r '.[] | [.address, .class, .title, (.floating | tostring), (.xwayland | tostring), .workspace.name, (.pinned | tostring), (.fullscreen | tostring)] | @tsv')
+}
+
 route_window() {
     exec 9>"$lock_file"
     flock 9
 
-    local address="$1" client class pid workspace="" current_workspace reserved monitor
+    local address="$1" client class pid title floating xwayland pin fullscreen policy_line monitor_role workspace_policy children_policy inherit_exclude workspace="" current_workspace reserved monitor target_monitor moved_monitor=0
     for _ in {1..20}; do
         client="$(client_json | jq -c --arg address "0x${address#0x}" 'first(.[] | select(.address == $address)) // empty')"
         [[ -n "$client" ]] && break
@@ -65,12 +115,62 @@ route_window() {
     [[ -n "$client" ]] || return 0
 
     class="$(jq -r '.class' <<<"$client")"
+    title="$(jq -r '.title' <<<"$client")"
+    floating="$(jq -r '.floating' <<<"$client")"
+    xwayland="$(jq -r '.xwayland' <<<"$client")"
+    pin="$(jq -r '.pinned' <<<"$client")"
+    fullscreen="$(jq -r '.fullscreen' <<<"$client")"
     pid="$(jq -r '.pid' <<<"$client")"
+    "$HOME/.local/bin/orbit-app-observe" match --class "$class" --title "$title" >/dev/null 2>&1 || true
     current_workspace="$(jq -r '.workspace.name' <<<"$client")"
     monitor="$(monitor_name "$(jq -r '.monitor' <<<"$client")")"
-    reserved="$(reserved_workspace "$monitor")"
-    managed_class "$class" || return 0
 
+    policy_line="$("$policy_resolver" resolve --class "$class" --title "$title" --floating "$floating" --xwayland "$xwayland" --workspace "$current_workspace" --pin "$pin" --fullscreen "$fullscreen" 2>/dev/null || true)"
+    IFS=$'\t' read -r monitor_role workspace_policy children_policy inherit_exclude <<<"$policy_line"
+    monitor_role="${monitor_role:-focused}"
+    workspace_policy="${workspace_policy:-dedicated}"
+    children_policy="${children_policy:-inherit}"
+    inherit_exclude="${inherit_exclude:-}"
+
+    [[ "$workspace_policy" == "ignore" ]] && return 0
+
+    # Explicitly floating utilities belong to the workspace that launched
+    # them. They are only allocated a workspace after becoming tiled.
+    if [[ "$workspace_policy" == "floating" && "$floating" == "true" ]]; then
+        return 0
+    fi
+
+    if [[ "$workspace_policy" == "transient" ]]; then
+        workspace="$(active_application_workspace "$address")"
+        [[ -n "$workspace" ]] || workspace="$current_workspace"
+        if [[ -n "$workspace" && "$current_workspace" != "$workspace" ]]; then
+            hyprctl dispatch --quiet \
+                "hl.dsp.window.move({ workspace = \"$workspace\", window = \"address:0x${address#0x}\" })" \
+                >/dev/null 2>&1 || true
+        fi
+        return 0
+    fi
+
+    if [[ "$monitor_role" == "gaming" ]]; then
+        target_monitor="$(gaming_monitor)"
+        if [[ -n "$target_monitor" && "$monitor" != "$target_monitor" ]]; then
+            if move_window_to_monitor "$target_monitor" "$address"; then
+                sleep 0.05
+                client="$(client_json | jq -c --arg address "0x${address#0x}" 'first(.[] | select(.address == $address)) // empty')"
+                [[ -n "$client" ]] || return 0
+                current_workspace="$(jq -r '.workspace.name' <<<"$client")"
+                monitor="$(monitor_name "$(jq -r '.monitor' <<<"$client")")"
+                moved_monitor=1
+            fi
+        fi
+    fi
+
+    # A workspace recorded before a role-based monitor move is no longer a
+    # valid owner for this client. Let the normal allocation path create a
+    # workspace on the target monitor.
+    [[ "$moved_monitor" -eq 1 ]] && rm -f "$state_dir/$pid"
+
+    reserved="$(reserved_workspace "$monitor")"
     # Steam menus and notifications use the same class as the main client but
     # are transient floating surfaces. Keep them with Steam instead of giving
     # each one a dynamic application workspace.
@@ -85,27 +185,31 @@ route_window() {
             fi
             return 0
         fi
-        printf 'class=%s\nworkspace=%s\n' "$class" "$current_workspace" > "$state_dir/$pid"
     fi
 
-    # Steam's transient surfaces can be reported as tiled briefly while they
-    # map. Reuse the main Steam process workspace before landing-workspace
-    # relocation runs, so that race cannot allocate a new workspace.
-    if [[ "$class" == steam && -f "$state_dir/$pid" ]]; then
+    # Persistent landing workspaces are anchor-only. If a child process has a
+    # known parent workspace, keep the child with its parent; otherwise send
+    # the unexpected window to a fresh dynamic workspace. This applies to
+    # unmanaged applications as well as the managed set below.
+    if [[ -n "$reserved" && "$current_workspace" == "$reserved" ]] && ! reserved_anchor_class "$class"; then
         workspace="$(find_workspace_for_pid "$pid" || true)"
-    fi
-
-    # Persistent landing workspaces stay visibly empty. Any new window that
-    # lands there is given a fresh dynamic workspace immediately.
-    if [[ -z "$workspace" && -n "$reserved" && "$current_workspace" == "$reserved" ]]; then
+        if [[ -z "$workspace" || "$workspace" == "$reserved" ]]; then
+            workspace="emptynm"
+        fi
         hyprctl dispatch --quiet \
-            "hl.dsp.window.move({ workspace = \"emptynm\", window = \"address:0x${address#0x}\" })" \
+            "hl.dsp.window.move({ workspace = \"$workspace\", window = \"address:0x${address#0x}\" })" \
             >/dev/null 2>&1
-        current_workspace="$(hyprctl clients -j | jq -r --arg address "0x${address#0x}" 'first(.[] | select(.address == $address) | .workspace.name) // empty')"
+        current_workspace="$(client_json | jq -r --arg address "0x${address#0x}" 'first(.[] | select(.address == $address) | .workspace.name) // empty')"
         workspace="$current_workspace"
+        [[ "$class" == steam ]] && printf 'class=%s\nworkspace=%s\n' "$class" "$workspace" > "$state_dir/$pid"
     fi
 
-    [[ -n "$workspace" ]] || workspace="$(find_workspace_for_pid "$pid" || true)"
+    if [[ "$children_policy" == "inherit" ]]; then
+        # A game excludes the Steam launcher state, while ordinary child
+        # processes inherit the nearest application workspace.
+        [[ -n "$workspace" ]] || workspace="$(find_workspace_for_pid "$pid" || true)"
+        [[ -n "$inherit_exclude" ]] && workspace="$(find_workspace_for_pid "$pid" "$inherit_exclude" || true)"
+    fi
     if [[ -z "$workspace" ]]; then
         hyprctl dispatch --quiet \
             "hl.dsp.window.move({ workspace = \"emptynm\", window = \"address:0x${address#0x}\" })" \
@@ -118,6 +222,8 @@ route_window() {
             "hl.dsp.window.move({ workspace = \"$workspace\", window = \"address:0x${address#0x}\" })" \
             >/dev/null 2>&1
     fi
+
+    printf 'class=%s\nworkspace=%s\n' "$class" "$workspace" > "$state_dir/$pid"
 
 }
 
@@ -167,6 +273,7 @@ while :; do
                 ;;
             closewindow\>*) cleanup ;;
         esac
-    done < <(socat -u "UNIX-CONNECT:$socket" - 2>/dev/null)
+    done < <(timeout 0.5s socat -u "UNIX-CONNECT:$socket" - 2>/dev/null)
+    scan_floating_transitions
     sleep 0.2
 done

@@ -1,0 +1,26 @@
+#!/bin/sh
+
+set -eu
+
+state_dir="${XDG_CACHE_HOME:-$HOME/.cache}/orbit"
+state_file="$state_dir/xmb-visible"
+overview_state_file="$state_dir/overview-visible"
+mkdir -p "$state_dir"
+[ -f "$state_file" ] || printf '0\n' > "$state_file"
+[ -f "$overview_state_file" ] || printf 'closed 0\n' > "$overview_state_file"
+
+overview="$HOME/.local/bin/orbit-overview"
+
+# Hyprshell installs its switcher bindings at runtime rather than keeping
+# them in the compositor configuration. The Lua evaluator is required here
+# because this installation uses the Lua Hyprland parser.
+hyprctl eval 'hl.unbind("ALT + TAB")' >/dev/null 2>&1 || true
+hyprctl eval 'hl.unbind("ALT + Alt_L")' >/dev/null 2>&1 || true
+hyprctl eval 'hl.unbind("ALT + Alt_R")' >/dev/null 2>&1 || true
+hyprctl eval 'hl.unbind("Alt_L")' >/dev/null 2>&1 || true
+hyprctl eval 'hl.unbind("Alt_R")' >/dev/null 2>&1 || true
+hyprctl eval "hl.bind(\"ALT + TAB\", hl.dsp.exec_cmd(\"$overview cycle\"), { repeating = true })" >/dev/null 2>&1 || true
+hyprctl eval "hl.bind(\"Alt_L\", hl.dsp.exec_cmd(\"$overview close\"), { release = true })" >/dev/null 2>&1 || true
+hyprctl eval "hl.bind(\"Alt_R\", hl.dsp.exec_cmd(\"$overview close\"), { release = true })" >/dev/null 2>&1 || true
+
+exec "$HOME/.local/bin/phleg-quickshell" --no-duplicate --path "$HOME/.config/quickshell/orbit/shell.qml"

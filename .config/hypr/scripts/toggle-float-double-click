@@ -4,7 +4,7 @@ set -euo pipefail
 
 state_file="${XDG_RUNTIME_DIR}/hypr-double-click-float"
 double_click_window=500
-titlebar_height=30
+titlebar_height=20
 
 window="$(hyprctl activewindow -j)"
 cursor="$(hyprctl cursorpos -j)"

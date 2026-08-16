@@ -9,4 +9,6 @@ fi
 "$HOME/.config/hypr/scripts/blank-special-workspaces" enter
 "$HOME/.config/hypr/scripts/wallpaper-animation" exit
 sleep 1
-exec hyprlock
+
+hyprlock || true
+"$HOME/.config/hypr/scripts/wallpaper-session-effects" unlock

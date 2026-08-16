@@ -1,0 +1,12 @@
+{
+  "pinned": [
+    {"label": "Orbit XMB", "desktop": "orbit-xmb", "class": "orbit-xmb", "command": "orbit-xmb toggle"},
+    {"label": "Orbit Settings", "desktop": "orbit-settings", "class": "orbit-settings", "command": "orbit-settings open"},
+    {"label": "Terminal", "desktop": "org.wezfurlong.wezterm", "class": "org.wezfurlong.wezterm"},
+    {"label": "Files", "desktop": "org.gnome.Nautilus", "class": "org.gnome.Nautilus", "command": "nautilus --new-window"},
+    {"label": "Browser", "desktop": "zen-browser", "class": "zen"},
+    {"label": "Steam", "desktop": "steam", "class": "steam"},
+    {"label": "ProtonUp-Qt", "desktop": "net.davidotek.pupgui2", "class": "net.davidotek.pupgui2"},
+    {"label": "Music", "desktop": "org.jeffvli.feishin", "class": "feishin"}
+  ]
+}

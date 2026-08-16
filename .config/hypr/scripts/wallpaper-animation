@@ -24,8 +24,11 @@ case "${1:-}" in
         play_session_sound logout
         signal_renderer exit
         ;;
+    palette)
+        signal_renderer palette
+        ;;
     *)
-        printf 'usage: %s {intro|exit}\n' "$0" >&2
+        printf 'usage: %s {intro|exit|palette}\n' "$0" >&2
         exit 2
         ;;
 esac

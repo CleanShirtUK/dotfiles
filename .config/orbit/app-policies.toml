@@ -1,0 +1,48 @@
+[defaults]
+monitor_role = "focused"
+workspace_policy = "dedicated"
+children = "inherit"
+inherit_exclude = ""
+
+[[policy]]
+name = "orbit-shell"
+class_pattern = "^org\\.quickshell$"
+workspace_policy = "ignore"
+children = "ignore"
+
+[[policy]]
+name = "steam"
+class_pattern = "^steam$"
+monitor_role = "gaming"
+
+[[policy]]
+name = "steam-game"
+class_pattern = "^steam_app_.*$"
+monitor_role = "gaming"
+inherit_exclude = "^steam$"
+
+[[policy]]
+name = "authentication-dialog"
+class_pattern = "^(gcr-prompter|org\\.gnome\\.Polkit|polkit-gnome|polkit-kde-authentication-agent-1|polkit-mate-authentication-agent-1|gnome-keyring-prompt|org\\.gnome\\.keyring\\..*)$"
+workspace_policy = "transient"
+
+[[policy]]
+name = "desktop-dialog"
+class_pattern = "^(xdg-desktop-portal-gtk|zenity)$"
+workspace_policy = "transient"
+
+[[policy]]
+name = "floating-utility"
+class_pattern = "^(org\\.gnome\\.Nautilus|Nautilus|org\\.gnome\\.Software|io\\.missioncenter\\.MissionCenter|pavucontrol|blueman-manager|blueman-adapters|nm-connection-editor|nwg-displays|nwg-look|qt6ct|partitionmanager|org\\.kde\\.discover|org\\.gnome\\.FileRoller|org\\.gnome\\.DiskUtility|gnome-disk-utility|bitwarden|com\\.rustdesk\\.RustDesk|net\\.davidotek\\.pupgui2)$"
+workspace_policy = "floating"
+
+[[rule]]
+id = "rule-1786844071656"
+application = "org.darktable.darktable"
+name = "New window rule"
+kind = "simple"
+match_type = "title"
+match_mode = "contains"
+match_value = "darktable"
+match_pattern = ".*darktable.*"
+priority = 100

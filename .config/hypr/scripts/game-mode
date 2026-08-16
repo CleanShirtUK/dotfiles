@@ -4,6 +4,7 @@ set -u
 
 readonly wallpaper_control="${HOME}/.cache/ps3-wave-wallpaper/control"
 readonly game_mode_flag="${XDG_RUNTIME_DIR}/hypr-game-mode.active"
+readonly hyprland_socket="${XDG_RUNTIME_DIR}/hypr/${HYPRLAND_INSTANCE_SIGNATURE:-}/.socket2.sock"
 gamemode_pid=""
 in_game=0
 
@@ -77,14 +78,29 @@ trap cleanup EXIT INT TERM
 # Do not inherit stale runtime state after a service restart.
 rm -f "$game_mode_flag"
 
-while :; do
+refresh_game_state() {
+    local has_game
     has_game="$(timeout 1s hyprctl clients -j 2>/dev/null | jq -r 'any(.[]; (.class // "") | test("^steam_app_"))' 2>/dev/null || printf 'false')"
     if [[ "$has_game" == true && ! $in_game -eq 1 ]]; then
         enter_game_mode
-    elif [[ "$has_game" == true && $in_game -eq 1 ]]; then
-        hold_game_mode
     elif [[ "$has_game" != true && $in_game -eq 1 ]]; then
         leave_game_mode
     fi
-    sleep 0.5
+}
+
+refresh_game_state
+while :; do
+    if [[ ! -S "$hyprland_socket" ]]; then
+        sleep 1
+        refresh_game_state
+        continue
+    fi
+
+    while IFS= read -r event; do
+        case "$event" in
+            openwindow\>\>*|closewindow\>\>*) refresh_game_state ;;
+        esac
+    done < <(socat -u "UNIX-CONNECT:$hyprland_socket" 2>/dev/null)
+    sleep 0.2
+    refresh_game_state
 done

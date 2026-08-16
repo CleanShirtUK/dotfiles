@@ -1,0 +1,101 @@
+#!/usr/bin/env python3
+"""Record Orbit desktop launches and correlate them with Hyprland clients."""
+
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import tempfile
+import time
+import tomllib
+from pathlib import Path
+
+
+HOME = Path.home()
+RUNTIME = Path(os.environ.get("XDG_RUNTIME_DIR", "/tmp")) / "orbit"
+PENDING = RUNTIME / "application-launches.jsonl"
+IDENTITIES = HOME / ".config/orbit/application-identities.toml"
+
+
+def toml_string(value: str) -> str:
+    escaped = value.replace("\\", "\\\\").replace('"', '\\"').replace("\n", "\\n")
+    return f'"{escaped}"'
+
+
+def load_identities() -> dict:
+    try:
+        with IDENTITIES.open("rb") as stream:
+            return tomllib.load(stream).get("application", {})
+    except (FileNotFoundError, tomllib.TOMLDecodeError):
+        return {}
+
+
+def write_identities(value: dict) -> None:
+    lines = []
+    for application, identity in sorted(value.items()):
+        classes = sorted(set(identity.get("classes", [])))
+        titles = sorted(set(identity.get("titles", [])))
+        lines.append(f"[application.{toml_string(application)}]")
+        lines.append("classes = [" + ", ".join(toml_string(item) for item in classes) + "]")
+        lines.append("titles = [" + ", ".join(toml_string(item) for item in titles) + "]")
+        lines.append(f"confidence = {toml_string(identity.get('confidence', 'observed'))}")
+        lines.append("")
+    IDENTITIES.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.NamedTemporaryFile("w", dir=IDENTITIES.parent, delete=False) as stream:
+        stream.write("\n".join(lines))
+        temporary = Path(stream.name)
+    os.replace(temporary, IDENTITIES)
+
+
+def record_launch(desktop: str, command: str) -> None:
+    RUNTIME.mkdir(parents=True, exist_ok=True)
+    with PENDING.open("a") as stream:
+        stream.write(json.dumps({"desktop": desktop, "command": command, "time": time.time()}) + "\n")
+
+
+def match_window(app_class: str, title: str) -> None:
+    try:
+        records = [json.loads(line) for line in PENDING.read_text().splitlines() if line.strip()]
+    except FileNotFoundError:
+        return
+    now = time.time()
+    usable = [record for record in records if now - float(record.get("time", 0)) <= 20]
+    if not usable:
+        PENDING.unlink(missing_ok=True)
+        return
+    record = usable[-1]
+    identities = load_identities()
+    identity = identities.setdefault(record["desktop"], {"classes": [], "titles": [], "confidence": "observed"})
+    identity.setdefault("classes", [])
+    identity.setdefault("titles", [])
+    if app_class and app_class not in identity["classes"]:
+        identity["classes"].append(app_class)
+    if title and title not in identity["titles"]:
+        identity["titles"].append(title)
+    write_identities(identities)
+    remaining = [item for item in records if item is not record]
+    if remaining:
+        PENDING.write_text("\n".join(json.dumps(item) for item in remaining) + "\n")
+    else:
+        PENDING.unlink(missing_ok=True)
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(prog="orbit-app-observe")
+    subparsers = parser.add_subparsers(dest="command", required=True)
+    launch = subparsers.add_parser("launch")
+    launch.add_argument("--desktop", required=True)
+    launch.add_argument("--command", dest="exec_command", default="")
+    match = subparsers.add_parser("match")
+    match.add_argument("--class", dest="app_class", required=True)
+    match.add_argument("--title", default="")
+    args = parser.parse_args()
+    if args.command == "launch":
+        record_launch(args.desktop, args.exec_command)
+    else:
+        match_window(args.app_class, args.title)
+
+
+if __name__ == "__main__":
+    main()

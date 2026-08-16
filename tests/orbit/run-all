@@ -1,0 +1,66 @@
+#!/usr/bin/env bash
+set -u -o pipefail
+
+ROOT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)"
+RUN_ID="$(date -u +%Y-%m-%dT%H-%M-%SZ)-$$"
+STATE_ROOT="${XDG_STATE_HOME:-$HOME/.local/state}/orbit/tests"
+LOG_DIR="${ORBIT_TEST_LOG_DIR:-$STATE_ROOT/$RUN_ID}"
+MODE="contract"
+
+if [[ "${1:-}" == "--live" ]]; then
+    MODE="live"
+elif [[ "${1:-}" == "--help" ]]; then
+    printf 'Usage: %s [--live]\n' "$0"
+    printf '  default  deterministic contract tests\n'
+    printf '  --live   contract tests plus read-only live-session checks\n'
+    exit 0
+elif [[ $# -gt 0 ]]; then
+    printf 'Unknown option: %s\n' "$1" >&2
+    exit 2
+fi
+
+mkdir -p "$LOG_DIR/before" "$LOG_DIR/after" "$LOG_DIR/artifacts"
+export ORBIT_TEST_LOG_DIR="$LOG_DIR"
+export ORBIT_TEST_RUN_ID="$RUN_ID"
+
+{
+    printf 'run_id=%s\n' "$RUN_ID"
+    printf 'mode=%s\n' "$MODE"
+    printf 'root=%s\n' "$ROOT_DIR"
+    id
+    env | sort
+} >"$LOG_DIR/environment.txt"
+
+status=0
+python3 "$ROOT_DIR/tests/orbit/contract/test_contract.py" >"$LOG_DIR/contract.stdout.log" 2>"$LOG_DIR/contract.stderr.log" || status=1
+
+if [[ "$MODE" == live ]]; then
+    python3 "$ROOT_DIR/tests/orbit/live/test_live.py" >"$LOG_DIR/live.stdout.log" 2>"$LOG_DIR/live.stderr.log" || status=1
+fi
+
+python3 - "$LOG_DIR" "$MODE" "$status" <<'PY'
+import json
+import pathlib
+import sys
+
+log_dir = pathlib.Path(sys.argv[1])
+mode = sys.argv[2]
+exit_status = int(sys.argv[3])
+results = []
+for path in sorted(log_dir.glob("*.results.json")):
+    results.extend(json.loads(path.read_text()).get("tests", []))
+summary = {
+    "run_id": log_dir.name,
+    "mode": mode,
+    "status": "PASS" if exit_status == 0 else "FAIL",
+    "passed": sum(item["status"] == "PASS" for item in results),
+    "failed": sum(item["status"] == "FAIL" for item in results),
+    "skipped": sum(item["status"] == "SKIP" for item in results),
+    "tests": results,
+}
+(log_dir / "summary.json").write_text(json.dumps(summary, indent=2) + "\n")
+print(json.dumps(summary, indent=2))
+PY
+
+printf 'Result: %s\nLogs: %s\n' "$([[ $status -eq 0 ]] && printf PASS || printf FAIL)" "$LOG_DIR"
+exit "$status"

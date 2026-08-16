@@ -5,6 +5,20 @@
 !.gitignore
 !README.md
 !.config/
+!.config/orbit/
+!.config/orbit/settings.toml
+!.config/orbit/app-policies.toml
+!.config/orbit/application-identities.toml
+!.config/orbit/dock.json
+!.config/orbit/xmb.json
+!.config/orbit/palettes/
+!.config/orbit/palettes/tokyo-night.toml
+!.config/orbit/generated/
+!.config/orbit/generated/tokyo-night/
+!.config/orbit/generated/tokyo-night/**
+!.config/quickshell/
+!.config/quickshell/orbit/
+!.config/quickshell/orbit/**
 !.config/hypr/
 !.config/hypr/**
 !.config/hyprshell/
@@ -22,6 +36,8 @@
 !.config/gtk-4.0/noctalia.css
 !.config/gtk-4.0/shadow-overrides.css
 !.config/gtk-4.0/settings.ini
+!.config/qt6ct/
+!.config/qt6ct/qt6ct.conf
 !.config/zen/
 !.config/zen/phleg-userChrome.css
 !.config/obsidian/
@@ -53,6 +69,7 @@
 !.config/systemd/user/localsend.service
 !.config/systemd/user/wallpaper-session-effects.service
 !.config/systemd/user/game-mode.service
+!.config/systemd/user/orbit-shell.service
 !.config/systemd/user/polkit-agent.service
 !.local/share/
 !.local/share/color-schemes/
@@ -62,6 +79,12 @@
 !.local/share/session-sounds/session-logout.wav
 !.local/
 !.local/bin/
+!.local/bin/orbit-monitor
+!.local/bin/orbit-app-policy
+!.local/bin/orbit-app-observe
+!.local/bin/orbit-theme
+!.local/bin/orbit-shell
+!.local/bin/orbit-xmb
 !.local/bin/dotfiles-install-wallpaper
 !.local/bin/install-hyprwindowshade
 !.local/bin/configure-localsend
@@ -71,6 +94,7 @@
 !.local/bin/install-gpu-screen-recorder
 !.local/bin/configure-mission-center
 !.local/bin/configure-file-roller
+!.local/bin/configure-protonup-qt
 !.local/bin/play-session-sound
 !.local/bin/configure-zen
 !.local/bin/configure-obsidian
@@ -78,3 +102,11 @@
 !.local/bin/install-actions-for-nautilus
 !.local/bin/nautilus-open-as-admin
 !.local/bin/nautilus-copy-path
+!tests/
+!tests/orbit/
+!tests/orbit/**
+!Documents/
+!Documents/Obsidian/
+!Documents/Obsidian/MainVault/
+!Documents/Obsidian/MainVault/phleg/
+!Documents/Obsidian/MainVault/phleg/orbit shell migration questions and tracking.md

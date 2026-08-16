@@ -1,12 +1,10 @@
 [Unit]
-Description=Hyprshell workspace switcher
+Description=Hyprshell workspace switcher (disabled; Orbit owns the overview)
 PartOf=hyprland-session.target
 After=hyprland-session.target
 
 [Service]
-ExecStart=%h/.config/hypr/scripts/hyprshell-start
-Restart=on-failure
-RestartSec=2
+ExecStart=/usr/bin/true
 
 [Install]
 WantedBy=hyprland-session.target

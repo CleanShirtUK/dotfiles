@@ -11,6 +11,7 @@ local scripts = home .. "/.config/hypr/scripts"
 local gpuScreenRecorder = home .. "/.local/bin/gpu-screen-recorder-control"
 local animateLock = scripts .. "/animate-lock"
 local animateShutdown = scripts .. "/animate-shutdown"
+local orbitOverview = home .. "/.local/bin/orbit-overview"
 local moveWindowWorkspace = scripts .. "/move-window-workspace"
 local focusWorkspace = scripts .. "/focus-workspace"
 local mainMod = "SUPER"
@@ -33,6 +34,7 @@ dofile(home .. "/.config/hypr/noctalia.lua")
 hl.env("XCURSOR_SIZE", "24")
 hl.env("HYPRCURSOR_SIZE", "24")
 hl.env("QT_QPA_PLATFORMTHEME", "hyprqt6engine")
+hl.env("QT_STYLE_OVERRIDE", "Breeze")
 hl.permission("/usr/(bin|local/bin)/hyprpm", "plugin", "allow")
 
 -- Session lifecycle
@@ -40,17 +42,15 @@ hl.permission("/usr/(bin|local/bin)/hyprpm", "plugin", "allow")
 hl.on("hyprland.start", function()
     hl.exec_cmd("systemctl --user start polkit-agent.service")
     hl.exec_cmd(scripts .. "/restore-minimized")
-    hl.exec_cmd(scripts .. "/float-bitwarden-popup &")
     hl.exec_cmd(scripts .. "/dynamic-app-workspaces &")
     hl.exec_cmd("dbus-update-activation-environment --systemd --all")
-    hl.exec_cmd("systemctl --user import-environment WAYLAND_DISPLAY XDG_CURRENT_DESKTOP HYPRLAND_INSTANCE_SIGNATURE QT_QPA_PLATFORMTHEME")
+    hl.exec_cmd("systemctl --user set-environment QT_STYLE_OVERRIDE=Breeze")
+    hl.exec_cmd("systemctl --user import-environment WAYLAND_DISPLAY XDG_CURRENT_DESKTOP HYPRLAND_INSTANCE_SIGNATURE QT_QPA_PLATFORMTHEME QT_STYLE_OVERRIDE")
     hl.exec_cmd("systemctl --user start hyprland-session.target")
+    hl.exec_cmd("systemctl --user restart reserved-workspace-anchors.service")
     -- Restart Wayland-bound services when greetd reuses the user manager for a
     -- new Hyprland instance after logout.
     hl.exec_cmd("sh -c 'sleep 3; systemctl --user reset-failed noctalia.service; systemctl --user stop noctalia.service ps3-wave-wallpaper.service wallpaper-session-effects.service; systemctl --user start noctalia.service ps3-wave-wallpaper.service wallpaper-session-effects.service' &")
-    -- Let the compositor finish session startup before Hyprshell registers
-    -- its Lua keybindings.
-    hl.exec_cmd("sh -c 'sleep 2; systemctl --user restart hyprshell.service' &")
     hl.exec_cmd("systemctl --user restart game-mode.service")
     -- Restart after importing the session environment so hypridle can reach Wayland.
     hl.exec_cmd("systemctl --user restart hypridle.service")
@@ -151,8 +151,6 @@ if hl.plugin.hyprglass then
         contrast = 1.4,
     })
 
-    hg.layer("hyprshell_switch", { exclude = true })
-
 end
 
 -- Animations
@@ -191,6 +189,7 @@ hl.animation({ leaf = "zoomFactor", enabled = true, speed = 7, bezier = "quick" 
 hl.bind(mainMod .. " + Q", hl.dsp.exec_cmd(terminal))
 hl.bind(mainMod .. " + E", hl.dsp.exec_cmd(fileManager))
 hl.bind(mainMod .. " + Space", hl.dsp.exec_cmd(launcher))
+hl.bind(mainMod .. " + Escape", hl.dsp.exec_cmd(orbitOverview .. " close"))
 hl.bind(mainMod .. " + C", hl.dsp.window.close())
 hl.bind(mainMod .. " + V", hl.dsp.window.float({ action = "toggle" }))
 hl.bind(mainMod .. " + L", hl.dsp.exec_cmd(animateLock))
@@ -242,6 +241,7 @@ hl.bind("mouse:272", hl.dsp.exec_cmd(scripts .. "/toggle-float-double-click"), {
 
 -- Window rules
 
+dofile(home .. "/.config/hypr/orbit-window-rules.lua")
 
 hl.window_rule({
     name = "steam-games",
@@ -331,6 +331,14 @@ hl.window_rule({
     center = true,
 })
 
+hl.window_rule({
+    name = "float-orbit-settings",
+    match = { title = "^Orbit Settings$" },
+    float = true,
+    center = true,
+    size = { 1120, 720 },
+})
+
 -- Zed supplies its transparent chrome through the tracked theme; keep the
 -- client surface fully opaque so only those internal surfaces reveal the
 -- wallpaper.
@@ -359,10 +367,12 @@ hl.window_rule({
 })
 
 hl.window_rule({
-    name = "float-bitwarden-popup",
-    match = { title = "^Extension:.*Bitwarden.*" },
+    name = "float-zen-bitwarden-popup",
+    match = { class = "^zen$", title = ".*Bitwarden.*" },
     float = true,
     center = true,
+    size = { 420, 650 },
+    move = { "(monitor_w-window_w-20)", "20" },
 })
 
 hl.window_rule({
@@ -398,6 +408,25 @@ hl.window_rule({
     match = { class = "^steam$" },
     float = true,
 })
+
+for _, title in ipairs({
+    "^phleg-xmb-dp1$",
+    "^phleg-xmb-hdmi$",
+}) do
+    hl.window_rule({
+        name = "reserved-workspace-xmb-" .. title,
+        match = { class = "^org\\.quickshell$", title = title },
+        float = true,
+        fullscreen = true,
+        immediate = true,
+        focus_on_activate = true,
+        no_anim = true,
+        decorate = false,
+        no_blur = true,
+        no_shadow = true,
+        tag = "+hyprglass_disabled",
+    })
+end
 
 hl.window_rule({
     name = "keep-steam-main-window-tiled",

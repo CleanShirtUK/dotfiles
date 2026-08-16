@@ -1,0 +1,57 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+readonly app_id='net.davidotek.pupgui2'
+readonly host_kdeglobals="$HOME/.config/kdeglobals"
+readonly host_color_schemes="$HOME/.local/share/color-schemes"
+readonly flatpak_config_dir="${FLATPAK_USER_DIR:-$HOME/.var/app}/$app_id/config"
+readonly flatpak_data_dir="${FLATPAK_USER_DIR:-$HOME/.var/app}/$app_id/data"
+readonly kdeglobals_link="$flatpak_config_dir/kdeglobals"
+readonly color_schemes_link="$flatpak_data_dir/color-schemes"
+
+command -v flatpak >/dev/null 2>&1 || {
+    printf 'Flatpak is required but was not found.\n' >&2
+    exit 1
+}
+
+flatpak info "$app_id" >/dev/null 2>&1 || {
+    printf '%s is not installed. Install it from Flathub first.\n' "$app_id" >&2
+    exit 1
+}
+
+[[ -f "$host_kdeglobals" ]] || {
+    printf 'Host KDE configuration was not found: %s\n' "$host_kdeglobals" >&2
+    exit 1
+}
+
+[[ -d "$host_color_schemes" ]] || {
+    printf 'Host color-scheme directory was not found: %s\n' "$host_color_schemes" >&2
+    exit 1
+}
+
+mkdir -p "$flatpak_config_dir" "$flatpak_data_dir"
+if [[ -e "$kdeglobals_link" && ! -L "$kdeglobals_link" && -s "$kdeglobals_link" ]] && ! cmp -s "$host_kdeglobals" "$kdeglobals_link"; then
+    printf 'Refusing to replace non-empty ProtonUp-Qt KDE configuration: %s\n' "$kdeglobals_link" >&2
+    exit 1
+fi
+rm -f "$kdeglobals_link"
+cp "$host_kdeglobals" "$kdeglobals_link"
+
+if [[ -e "$color_schemes_link" && ! -L "$color_schemes_link" ]]; then
+    :
+else
+    rm -f "$color_schemes_link"
+    mkdir -p "$color_schemes_link"
+fi
+cp -a "$host_color_schemes"/. "$color_schemes_link"/
+
+# The KDE runtime provides its own platform theme and Breeze style. The host
+# hyprqt6engine and qt6ct plugins are not available inside the sandbox.
+flatpak override --user \
+    --env=QT_QPA_PLATFORMTHEME=kde \
+    --env=QT_STYLE_OVERRIDE=Breeze \
+    --env=DESKTOP_SESSION=plasma \
+    "$app_id"
+
+printf 'ProtonUp-Qt configured for the KDE platform theme and Breeze style. Restart it to apply the current KDE color scheme.\n'

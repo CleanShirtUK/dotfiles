@@ -1,0 +1,40 @@
+{
+  "fullscreen": false,
+  "categories": [
+    "All",
+    "System",
+    "Utilities",
+    "Graphics",
+    "Games",
+    "Media",
+    "Web",
+    "Social",
+    "Development",
+    "Office",
+    "Education",
+    "Science"
+  ],
+  "category_map": {
+    "AudioVideo": "Media",
+    "Audio": "Media",
+    "Video": "Media",
+    "Player": "Media",
+    "Game": "Games",
+    "Emulator": "Games",
+    "Graphics": "Graphics",
+    "Network": "Web",
+    "WebBrowser": "Web",
+    "Chat": "Social",
+    "InstantMessaging": "Social",
+    "Email": "Social",
+    "Development": "Development",
+    "Office": "Office",
+    "Education": "Education",
+    "Science": "Science",
+    "Settings": "System",
+    "System": "System",
+    "Utility": "Utilities",
+    "FileManager": "Utilities"
+  },
+  "overrides": {}
+}

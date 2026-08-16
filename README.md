@@ -2,6 +2,66 @@
 
 Personal Hyprland and Noctalia configuration.
 
+## Orbit Monitor Roles
+
+Orbit uses logical monitor roles instead of making desktop behavior depend on
+connector names. Configure the Home and Gaming Monitor in
+`.config/orbit/settings.toml`. The current installation uses `DP-1` as Home
+and `HDMI-A-1` as Gaming.
+
+List connected monitors with:
+
+```sh
+.local/bin/orbit-monitor list
+```
+
+Resolve a role for scripts with:
+
+```sh
+.local/bin/orbit-monitor resolve home
+.local/bin/orbit-monitor resolve gaming
+```
+
+Stable monitor identity fields can be added alongside or instead of the
+connector fallback. If a configured monitor is unavailable, Gaming falls back
+to Home, and Home falls back to the focused monitor.
+
+## Orbit Themes
+
+Orbit stores the selected palette in `.config/orbit/settings.toml` and palette
+sources in `.config/orbit/palettes/`. Generate neutral semantic and toolkit
+adapter artifacts with:
+
+```sh
+.local/bin/orbit-theme list
+.local/bin/orbit-theme current
+.local/bin/orbit-theme generate
+```
+
+Select a palette and regenerate its adapters with:
+
+```sh
+.local/bin/orbit-theme apply tokyo-night
+```
+
+Generated files are written under
+`.config/orbit/generated/<palette>/`. They are not installed over the active
+GTK, Qt, terminal, editor, or application configurations until a later
+migration phase has validated each adapter.
+
+ProtonUp-Qt is a Qt Flatpak and cannot load the host Hypr Qt platform plugin.
+Configure it to use the KDE runtime platform theme and Breeze style with:
+
+```sh
+.local/bin/configure-protonup-qt
+```
+
+The helper also copies the host `kdeglobals` and color-scheme directory into
+the Flatpak's app-local XDG configuration so the KDE runtime can read the
+selected Orbit palette. ProtonUp-Qt applies its own Fusion palette unless its
+desktop session is reported as Plasma, so the helper sets that app-local
+environment value as well. Restart ProtonUp-Qt after changing the override.
+
 ## Dependencies
 
 - Hyprland, Hypridle, and Hyprlock
@@ -229,13 +289,13 @@ Install GPU Screen Recorder system-wide from Flathub:
 ```
 
 The `.local/bin/gpu-screen-recorder-control` helper maintains a dedicated
-five-minute replay buffer for `HDMI-A-1` and uses a monitor-selection dialog
-for normal recordings. Recordings are saved under `~/Videos/ScreenCap` and
-capture desktop output audio only.
+five-minute replay buffer for the configured Gaming Monitor and uses a
+monitor-selection dialog for normal recordings. Recordings are saved under
+`~/Videos/ScreenCap` and capture desktop output audio only.
 
 - `SUPER + SHIFT + R` opens a monitor chooser and starts a recording; pressing
   it again stops the active normal recording.
-- `SUPER + SHIFT + Z` saves the previous five minutes from `HDMI-A-1`.
+- `SUPER + SHIFT + Z` saves the previous five minutes from the Gaming Monitor.
 
 GPU Screen Recorder captures realtime H.264 MP4 files. On stop or replay save,
 the helper also creates a Resolve-ready DNxHR HQ MOV with PCM audio under

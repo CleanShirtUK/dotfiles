@@ -1,0 +1,29 @@
+#!/bin/sh
+
+set -eu
+
+state_dir="${XDG_CACHE_HOME:-$HOME/.cache}/orbit"
+state_file="$state_dir/xmb-visible"
+mkdir -p "$state_dir"
+
+case "${1:-toggle}" in
+    open)
+        printf '1\n' > "$state_file"
+        ;;
+    close)
+        printf '0\n' > "$state_file"
+        ;;
+    toggle)
+        current=0
+        [ -f "$state_file" ] && current="$(tr -d '[:space:]' < "$state_file")"
+        if [ "$current" = 1 ]; then
+            printf '0\n' > "$state_file"
+        else
+            printf '1\n' > "$state_file"
+        fi
+        ;;
+    *)
+        printf 'Usage: %s {open|close|toggle}\n' "${0##*/}" >&2
+        exit 2
+        ;;
+esac

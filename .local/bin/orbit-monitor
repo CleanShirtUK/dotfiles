@@ -1,0 +1,145 @@
+#!/usr/bin/env python3
+"""Resolve Orbit's logical monitor roles to current Hyprland outputs."""
+
+from __future__ import annotations
+
+import argparse
+import json
+import subprocess
+import sys
+import tomllib
+from pathlib import Path
+
+
+SETTINGS = Path.home() / ".config/orbit/settings.toml"
+
+
+def load_settings() -> dict:
+    try:
+        with SETTINGS.open("rb") as stream:
+            return tomllib.load(stream)
+    except FileNotFoundError:
+        return {}
+    except tomllib.TOMLDecodeError as error:
+        raise SystemExit(f"Invalid Orbit settings: {error}") from error
+
+
+def monitors() -> list[dict]:
+    try:
+        result = subprocess.run(
+            ["hyprctl", "monitors", "-j"],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        value = json.loads(result.stdout)
+    except FileNotFoundError as error:
+        raise SystemExit("hyprctl is not installed or not in PATH") from error
+    except subprocess.CalledProcessError as error:
+        message = error.stderr.strip() or "Hyprland is not running"
+        raise SystemExit(message) from error
+    except json.JSONDecodeError as error:
+        raise SystemExit(f"Could not parse Hyprland monitor data: {error}") from error
+
+    if not isinstance(value, list):
+        raise SystemExit("Hyprland returned an invalid monitor list")
+    return value
+
+
+def normalized(value: object) -> str:
+    return " ".join(str(value or "").casefold().split())
+
+
+def role_selector(role: str) -> dict:
+    value = load_settings().get("monitors", {}).get(role)
+    if isinstance(value, str):
+        return {"connector": value}
+    if isinstance(value, dict):
+        return value
+    return {}
+
+
+def exact_match(monitor: dict, selector: dict, field: str) -> bool:
+    expected = normalized(selector.get(field))
+    actual_field = "name" if field == "connector" else field
+    return bool(expected) and normalized(monitor.get(actual_field)) == expected
+
+
+def select_monitor(role: str, available: list[dict], strict: bool = False) -> tuple[dict, bool]:
+    selector = role_selector(role)
+    if not selector:
+        if strict:
+            raise SystemExit(f"No monitor role configured: {role}")
+        return fallback_monitor(role, available), True
+
+    # Stable EDID identity is preferred; connector names are only a fallback.
+    identity_fields = ("serial", "make", "model", "description", "connector")
+    candidates = [
+        monitor
+        for monitor in available
+        if all(
+            not selector.get(field) or exact_match(monitor, selector, field)
+            for field in identity_fields
+        )
+    ]
+    if candidates:
+        return candidates[0], False
+
+    if strict:
+        raise SystemExit(f"Configured monitor is unavailable: {role}")
+    return fallback_monitor(role, available), True
+
+
+def fallback_monitor(role: str, available: list[dict]) -> dict:
+    if not available:
+        raise SystemExit("No enabled Hyprland monitors are available")
+
+    if role != "home":
+        try:
+            home, _ = select_monitor("home", available, strict=True)
+            return home
+        except SystemExit:
+            pass
+
+    focused = next((monitor for monitor in available if monitor.get("focused")), None)
+    return focused or available[0]
+
+
+def monitor_label(monitor: dict) -> str:
+    identity = " ".join(
+        part for part in (monitor.get("make"), monitor.get("model"), monitor.get("serial")) if part
+    )
+    return identity or monitor.get("description") or "unknown display"
+
+
+def list_monitors(available: list[dict]) -> None:
+    for monitor in available:
+        marker = "*" if monitor.get("focused") else " "
+        print(f"{marker} {monitor.get('name', 'unknown')}: {monitor_label(monitor)}")
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(prog="orbit-monitor")
+    subparsers = parser.add_subparsers(dest="command", required=True)
+    subparsers.add_parser("list", help="list enabled Hyprland monitors")
+    resolve = subparsers.add_parser("resolve", help="resolve a logical monitor role")
+    resolve.add_argument("role", choices=("home", "gaming"))
+    resolve.add_argument("--strict", action="store_true", help="fail if the configured monitor is unavailable")
+    args = parser.parse_args()
+
+    available = monitors()
+    if args.command == "list":
+        list_monitors(available)
+        return
+
+    monitor, fallback = select_monitor(args.role, available, args.strict)
+    if fallback and not args.strict:
+        print(
+            f"Orbit monitor role '{args.role}' is unavailable; using {monitor['name']}",
+            file=sys.stderr,
+        )
+    print(monitor["name"])
+
+
+if __name__ == "__main__":
+    main()

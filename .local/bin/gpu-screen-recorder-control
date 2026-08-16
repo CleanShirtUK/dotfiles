@@ -9,7 +9,7 @@ readonly output_dir="${HOME}/Videos/ScreenCap"
 readonly replay_dir="${output_dir}/replays"
 readonly recording_dir="${output_dir}/recordings"
 readonly resolve_dir="${output_dir}/resolve"
-readonly replay_monitor='HDMI-A-1'
+readonly monitor_resolver="${HOME}/.local/bin/orbit-monitor"
 
 gsr_cli() {
     local socket="$1"
@@ -57,6 +57,11 @@ choose_monitor() {
 }
 
 start_replay() {
+    local replay_monitor
+    replay_monitor="$("$monitor_resolver" resolve gaming)" || {
+        printf 'Could not resolve the Orbit Gaming Monitor.\n' >&2
+        exit 1
+    }
     mkdir -p "$replay_dir" "$recording_dir"
 
     setsid flatpak run --command=gpu-screen-recorder "$app_id" \

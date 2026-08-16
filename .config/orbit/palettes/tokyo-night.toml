@@ -1,0 +1,35 @@
+[palette]
+name = "Tokyo Night"
+appearance = "dark"
+
+[colors]
+background = "#1a1b26"
+background_deep = "#12121a"
+surface = "#24283b"
+surface_elevated = "#2c3148"
+surface_selected = "#333954"
+surface_highlight = "#292e42"
+selection = "#283457"
+editor = "#1f2130"
+border = "#3d4355"
+border_strong = "#5d6682"
+split = "#414868"
+muted = "#565f89"
+text = "#c0caf5"
+text_muted = "#9aa5ce"
+accent = "#7aa2f7"
+accent_secondary = "#bb9af7"
+accent_deep = "#3d59a1"
+red = "#f7768e"
+green = "#9ece6a"
+yellow = "#e0af68"
+orange = "#ff9e64"
+cyan = "#7dcfff"
+cyan_muted = "#73daca"
+ansi_black = "#15161e"
+ansi_white = "#a9b1d6"
+accent_foreground = "#16161e"
+
+[gradients]
+cava = ["#9ece6a", "#e0af68", "#e0af68", "#ff9e64", "#ff9e64", "#f7768e", "#bb9af7", "#bb9af7"]
+horizontal_cava = ["#f7768e", "#ff9e64", "#e0af68", "#9ece6a", "#73daca", "#7dcfff", "#7aa2f7", "#bb9af7"]

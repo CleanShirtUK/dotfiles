@@ -1,0 +1,29 @@
+[application."md.obsidian.Obsidian"]
+classes = ["md.obsidian.Obsidian"]
+titles = ["orbit shell migration questions and tracking - MainVault - Obsidian 1.13.7"]
+confidence = "confirmed"
+
+[application."org.darktable.darktable"]
+classes = ["darktable"]
+titles = []
+confidence = "confirmed"
+
+[application."org.gnome.FileRoller"]
+classes = ["org.gnome.FileRoller"]
+titles = []
+confidence = "confirmed"
+
+[application."org.wezfurlong.wezterm"]
+classes = ["org.wezfurlong.wezterm"]
+titles = ["~"]
+confidence = "confirmed"
+
+[application."steam"]
+classes = ["steam"]
+titles = ["Steam"]
+confidence = "confirmed"
+
+[application."zen-browser"]
+classes = ["zen"]
+titles = ["hyprparser - Rust — Zen Browser"]
+confidence = "confirmed"

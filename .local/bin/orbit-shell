@@ -11,6 +11,11 @@ mkdir -p "$state_dir"
 
 overview="$HOME/.local/bin/orbit-overview"
 
+# Orbit owns the Quick Controls visuals. Basic is a deterministic fallback for
+# controls that have not yet been replaced by an Orbit component; Breeze is a
+# Qt Widgets style and does not style Qt Quick Controls.
+export QT_QUICK_CONTROLS_STYLE=Basic
+
 # Hyprshell installs its switcher bindings at runtime rather than keeping
 # them in the compositor configuration. The Lua evaluator is required here
 # because this installation uses the Lua Hyprland parser.

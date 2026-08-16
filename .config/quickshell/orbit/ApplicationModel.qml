@@ -15,6 +15,8 @@ Item {
         { label: "Music", desktop: "org.jeffvli.feishin", class: "feishin" }
     ]
     property var pinned: fallbackPinned
+    property var pendingLaunches: ({})
+    property int launchRevision: 0
 
     FileView {
         id: dockFile
@@ -23,6 +25,18 @@ Item {
         watchChanges: true
         onLoaded: root.reload()
         onFileChanged: reload()
+    }
+
+    Timer {
+        interval: 100
+        running: true
+        repeat: true
+        onTriggered: root.reconcileLaunches()
+    }
+
+    Connections {
+        target: root.windowModel
+        function onClientsChanged() { root.reconcileLaunches() }
     }
 
     function reload() {
@@ -46,6 +60,46 @@ Item {
         return desktop ? Quickshell.iconPath(desktop.icon) : ""
     }
 
+    function appClass(item) {
+        return item.class || item.desktop
+    }
+
+    function isLaunching(item) {
+        launchRevision
+        return Boolean(pendingLaunches[item.desktop])
+    }
+
+    function beginLaunch(item) {
+        var next = {}
+        for (var key in pendingLaunches)
+            next[key] = pendingLaunches[key]
+        next[item.desktop] = Date.now()
+        pendingLaunches = next
+        launchRevision++
+    }
+
+    function reconcileLaunches() {
+        var now = Date.now()
+        var next = {}
+        var changed = false
+        for (var desktop in pendingLaunches) {
+            var item = { desktop: desktop }
+            var desktopEntry = desktopFor(desktop)
+            var expectedClass = desktopEntry && desktopEntry.startupWMClass ? desktopEntry.startupWMClass : desktop
+            var found = windowModel.clients.some(function(client) {
+                return client.class === expectedClass || client.class === desktop
+            })
+            if (!found && now - pendingLaunches[desktop] < 10000)
+                next[desktop] = pendingLaunches[desktop]
+            else
+                changed = true
+        }
+        if (changed) {
+            pendingLaunches = next
+            launchRevision++
+        }
+    }
+
     function items() {
         var allClients = windowModel.clients
         var usedAddresses = []
@@ -65,12 +119,14 @@ Item {
                 usedAddresses.push(match.address)
             usedClasses.push(root.pinnedClass(pin))
             result.push({
+                dockIndex: result.length,
                 label: match ? (match.title || pin.label) : pin.label,
                 desktop: pin.desktop,
                 class: pin.class,
                 command: pin.command || "",
                 address: match ? match.address : "",
-                running: Boolean(match)
+                running: Boolean(match),
+                pinned: true
             })
         }
 
@@ -81,11 +137,13 @@ Item {
 
             usedClasses.push(client.class)
             result.push({
+                dockIndex: result.length,
                 label: client.title || client.class,
                 desktop: client.class,
                 class: client.class,
                 address: client.address,
-                running: true
+                running: true,
+                pinned: false
             })
         }
         return result
@@ -94,10 +152,37 @@ Item {
     function launch(item) {
         var desktop = desktopFor(item.desktop)
         if (desktop) {
+            beginLaunch(item)
             Quickshell.execDetached([Quickshell.env("HOME") + "/.local/bin/orbit-app-observe", "launch", "--desktop", desktop.id || item.desktop, "--command", desktop.execString || ""])
             desktop.execute()
-        } else if (item.command)
+        } else if (item.command) {
+            beginLaunch(item)
             Quickshell.execDetached(["sh", "-lc", item.command])
+        }
+    }
+
+    function launchNewWindow(item) {
+        var desktop = desktopFor(item.desktop)
+        if (desktop)
+            desktop.execute()
+        else if (item.command)
+            Quickshell.execDetached(["sh", "-lc", item.command])
+    }
+
+    function close(item) {
+        var expectedClass = appClass(item)
+        windowModel.clients.forEach(function(client) {
+            if (client.class === expectedClass)
+                Quickshell.execDetached(["hyprctl", "dispatch", "closewindow", "address:" + client.address])
+        })
+    }
+
+    function setPinned(item, value) {
+        var action = value ? "pin" : "unpin"
+        var command = [Quickshell.env("HOME") + "/.local/bin/orbit-dock", action, "--desktop", item.desktop]
+        if (value)
+            command = command.concat(["--class", appClass(item), "--label", item.label])
+        Quickshell.execDetached(command)
     }
 
     function focusClient(address) {

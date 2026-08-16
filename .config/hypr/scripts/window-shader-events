@@ -8,6 +8,7 @@ focus_shader="$HOME/.config/hypr/shaders/focus-ripple.glsl"
 wezterm_shader="$HOME/.config/hypr/shaders/wezterm-ripple.glsl"
 focus_wezterm_shader="$HOME/.config/hypr/shaders/focus-wezterm-ripple.glsl"
 state_dir="${XDG_RUNTIME_DIR}/hypr-window-shader"
+appearance_file="$HOME/.config/orbit/generated/appearance.json"
 game_mode_flag="${XDG_RUNTIME_DIR}/hypr-game-mode.active"
 lock_file="$state_dir/daemon.lock"
 active_windows="$state_dir/active-windows"
@@ -41,6 +42,10 @@ set_window_shader() {
     hyprctl eval "$command" >/dev/null 2>&1 || true
 }
 
+shader_enabled() {
+    [[ ! -f "$appearance_file" ]] || jq -e '.effects.hyprwindowshade_enabled == true' "$appearance_file" >/dev/null 2>&1
+}
+
 shader_for_class() {
     case "$1" in
         wezterm|WezTerm|org.wezfurlong.wezterm) printf '%s\n' "$wezterm_shader" ;;
@@ -64,6 +69,7 @@ forget_window() {
 
 animate_window() {
     local address="$1" class="$2" effect_shader
+    shader_enabled || return 0
     if grep -Fqx -- "$address" "$active_windows" 2>/dev/null; then
         return 0
     fi
@@ -95,6 +101,7 @@ clear_window() {
 
 animate_focus() {
     local address="$1" class="$2" previous generation effect_shader
+    shader_enabled || return 0
     [[ -n "$address" ]] || return 0
     previous=""
     [[ -f "$focused_window" ]] && read -r previous _ < "$focused_window"

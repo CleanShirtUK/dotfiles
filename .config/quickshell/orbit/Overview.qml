@@ -53,32 +53,32 @@ PanelWindow {
 
         Rectangle {
             anchors.centerIn: parent
-            width: Math.min(parent.width - 80, 1100)
-            height: Math.min(parent.height - 100, 680)
+            width: Math.min(parent.width - 64, 1160)
+            height: Math.min(parent.height - 80, 720)
             color: Qt.alpha(themeData.colors.window_background || "#1a1b26", 0.98)
             border.color: themeData.colors.border || "#3d4355"
             border.width: 1
-            radius: 16
+            radius: 20
 
             Column {
                 anchors.fill: parent
-                anchors.margins: 28
-                spacing: 18
+                anchors.margins: 32
+                spacing: 20
 
                 Row {
                     width: parent.width
                     spacing: 12
                     Text {
-                        text: "WORKSPACES"
+                        text: "Workspaces"
                         color: themeData.colors.accent || "#7aa2f7"
-                        font.family: "JetBrains Mono"
-                        font.pixelSize: 18
+                        font.family: themeData.uiFont
+                        font.pixelSize: 20
                         font.bold: true
                     }
                     Text {
-                        text: "Alt+Tab to cycle  |  Enter to select  |  Esc to cancel"
+                        text: "Alt+Tab to cycle, Enter to select, Esc to cancel"
                         color: themeData.colors.text_muted || "#9aa5ce"
-                        font.family: "JetBrains Mono"
+                        font.family: themeData.uiFont
                         font.pixelSize: 11
                         anchors.verticalCenter: parent.verticalCenter
                     }
@@ -103,16 +103,16 @@ PanelWindow {
                         Row {
                             spacing: 8
                             Text {
-                                text: modelData.name + (workspaceDelegate.workspaceIndex === overviewData.selectedWorkspaceIndex ? "  < FOCUSED >" : "")
+                                text: modelData.name + (workspaceDelegate.workspaceIndex === overviewData.selectedWorkspaceIndex ? "  (focused)" : "")
                                 color: themeData.colors.accent_secondary || "#bb9af7"
-                                font.family: "JetBrains Mono"
+                                font.family: themeData.uiFont
                                 font.pixelSize: 13
                                 font.bold: true
                             }
                             Text {
-                                text: modelData.windows.length === 0 ? "EMPTY" : modelData.windows.length + " WINDOW" + (modelData.windows.length === 1 ? "" : "S")
+                                text: modelData.windows.length === 0 ? "Empty" : modelData.windows.length + " window" + (modelData.windows.length === 1 ? "" : "s")
                                 color: themeData.colors.text_muted || "#9aa5ce"
-                                font.family: "JetBrains Mono"
+                                font.family: themeData.uiFont
                                 font.pixelSize: 10
                             }
                         }
@@ -127,20 +127,20 @@ PanelWindow {
                                     required property var modelData
                                     width: Math.min(250, workspaceList.width - 10)
                                     height: 74
-                                    radius: 10
-                                    color: workspaceDelegate.workspaceIndex === overviewData.selectedWorkspaceIndex ? (themeData.colors.surface_selected || "#333954") : (themeData.colors.surface || "#24283b")
+                                    radius: 12
+                                    color: workspaceDelegate.workspaceIndex === overviewData.selectedWorkspaceIndex ? Qt.alpha(themeData.colors.accent || "#7aa2f7", 0.16) : Qt.alpha(themeData.colors.surface || "#24283b", 0.62)
                                     border.color: workspaceDelegate.workspaceIndex === overviewData.selectedWorkspaceIndex ? (themeData.colors.accent || "#7aa2f7") : "transparent"
-                                    border.width: 2
+                                    border.width: workspaceDelegate.workspaceIndex === overviewData.selectedWorkspaceIndex ? 1 : 0
 
-                                    Image {
-                                        anchors.left: parent.left
-                                        anchors.leftMargin: 12
-                                        anchors.verticalCenter: parent.verticalCenter
-                                        width: 32
-                                        height: 32
-                                        source: Quickshell.iconPath(modelData.class)
-                                        fillMode: Image.PreserveAspectFit
-                                    }
+                                     OrbitIcon {
+                                         anchors.left: parent.left
+                                         anchors.leftMargin: 12
+                                         anchors.verticalCenter: parent.verticalCenter
+                                         width: 32
+                                         height: 32
+                                         iconName: modelData.class
+                                         iconSize: 48
+                                     }
                                     Text {
                                         anchors.left: parent.left
                                         anchors.leftMargin: 56
@@ -149,8 +149,8 @@ PanelWindow {
                                         anchors.verticalCenter: parent.verticalCenter
                                         text: modelData.title || modelData.class
                                         color: themeData.colors.text || "#c0caf5"
-                                        font.family: "JetBrains Mono"
-                                        font.pixelSize: 11
+                                         font.family: themeData.uiFont
+                                         font.pixelSize: 12
                                         elide: Text.ElideRight
                                     }
                                     MouseArea {

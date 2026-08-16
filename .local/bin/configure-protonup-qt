@@ -47,10 +47,12 @@ fi
 cp -a "$host_color_schemes"/. "$color_schemes_link"/
 
 # The KDE runtime provides its own platform theme and Breeze style. The host
-# hyprqt6engine and qt6ct plugins are not available inside the sandbox.
+# hyprqt6engine and qt6ct plugins are not available inside the sandbox. Kora is
+# selected through the shared KDE configuration copied above.
 flatpak override --user \
     --env=QT_QPA_PLATFORMTHEME=kde \
     --env=QT_STYLE_OVERRIDE=Breeze \
+    --env=ICON_THEME=kora \
     --env=DESKTOP_SESSION=plasma \
     "$app_id"
 

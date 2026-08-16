@@ -17,6 +17,14 @@ local focusWorkspace = scripts .. "/focus-workspace"
 local mainMod = "SUPER"
 local hyprGlassPlugin = home .. "/.local/share/hyprland/plugins/hyprglass.so"
 local hyprWindowShadePlugin = home .. "/.local/share/hyprland/plugins/HyprWindowShade.so"
+local orbitAppearance = dofile(home .. "/.config/orbit/generated/appearance.lua")
+
+local function animation_style(kind, fallback)
+    if kind == "default" or kind == nil then return fallback end
+    if kind == "slidefadevert" then return "slidefadevert -100%" end
+    if kind == "popin" then return "popin 80%" end
+    return kind
+end
 local hyprlockBackgroundColor = "rgb(050508)"
 local hyprlockBackgroundFile = io.open(home .. "/.cache/ps3-wave-wallpaper/hyprlock-background.conf", "r")
 if hyprlockBackgroundFile then
@@ -81,15 +89,15 @@ hl.config({
     },
 
     decoration = {
-        rounding = 10,
+        rounding = orbitAppearance.style.corner_radius,
         rounding_power = 2,
-        active_opacity = 1,
-        inactive_opacity = 0.9,
-        blur = { new_optimizations = true },
+        active_opacity = orbitAppearance.transparency.active_opacity,
+        inactive_opacity = orbitAppearance.transparency.inactive_opacity,
+        blur = { enabled = orbitAppearance.effects.hyprglass_enabled, new_optimizations = true },
         shadow = { enabled = true, range = 2, render_power = 5, color = 0xee1a1a1a },
     },
 
-    animations = { enabled = true },
+    animations = { enabled = orbitAppearance.effects.animations_enabled },
 
     input = {
         kb_layout = "us",
@@ -135,7 +143,7 @@ if hl.plugin.hyprglass then
 
     hg.config({
         default_theme = "dark",
-        default_preset = "glass",
+        default_preset = orbitAppearance.effects.hyprglass_blur_type,
         layers = { enabled = 1 },
     })
 
@@ -162,27 +170,27 @@ hl.curve("almostLinear", { type = "bezier", points = { { 0.5, 0.5 }, { 0.75, 1 }
 hl.curve("quick", { type = "bezier", points = { { 0.15, 0 }, { 0.1, 1 } } })
 hl.curve("easy", { type = "spring", mass = 1, stiffness = 71.2633, dampening = 15.8273644 })
 
-hl.animation({ leaf = "global", enabled = true, speed = 10, bezier = "default" })
-hl.animation({ leaf = "border", enabled = true, speed = 5.39, bezier = "easeOutQuint" })
+hl.animation({ leaf = "global", enabled = orbitAppearance.effects.animations.global.enabled, speed = orbitAppearance.effects.animations.global.speed, bezier = "default" })
+hl.animation({ leaf = "border", enabled = orbitAppearance.effects.animations.global.enabled, speed = 5.39, bezier = "easeOutQuint" })
 -- Keep window geometry changes smooth so they do not fight workspace slides.
-hl.animation({ leaf = "windows", enabled = true, speed = 2.9, bezier = "almostLinear" })
+hl.animation({ leaf = "windows", enabled = orbitAppearance.effects.animations.windows.enabled, speed = orbitAppearance.effects.animations.windows.speed, bezier = "almostLinear" })
     -- Keep the client surface fixed; fadeIn handles opacity.
-hl.animation({ leaf = "windowsIn", enabled = false, speed = 4.1, spring = "easy", style = "popin 80%" })
-hl.animation({ leaf = "windowsOut", enabled = true, speed = 2.95, bezier = "linear", style = "slide" })
-hl.animation({ leaf = "fadeIn", enabled = true, speed = 1.5, bezier = "almostLinear" })
-hl.animation({ leaf = "fadeOut", enabled = true, speed = 1.25, bezier = "almostLinear" })
-hl.animation({ leaf = "fade", enabled = true, speed = 3.03, bezier = "quick" })
-hl.animation({ leaf = "layers", enabled = true, speed = 3.81, bezier = "easeOutQuint" })
-hl.animation({ leaf = "layersIn", enabled = true, speed = 4, bezier = "easeOutQuint", style = "fade" })
-hl.animation({ leaf = "layersOut", enabled = true, speed = 1.5, bezier = "linear", style = "fade" })
+hl.animation({ leaf = "windowsIn", enabled = false, speed = 4.1, spring = "easy", style = animation_style(orbitAppearance.effects.animations.windows.type, "popin 80%") })
+hl.animation({ leaf = "windowsOut", enabled = true, speed = 2.95, bezier = "linear", style = animation_style(orbitAppearance.effects.animations.windows.type, "slide") })
+hl.animation({ leaf = "fadeIn", enabled = orbitAppearance.effects.animations.fades.enabled, speed = orbitAppearance.effects.animations.fades.speed, bezier = "almostLinear" })
+hl.animation({ leaf = "fadeOut", enabled = orbitAppearance.effects.animations.fades.enabled, speed = 1.25, bezier = "almostLinear" })
+hl.animation({ leaf = "fade", enabled = orbitAppearance.effects.animations.fades.enabled, speed = 3.03, bezier = "quick" })
+hl.animation({ leaf = "layers", enabled = orbitAppearance.effects.animations.layers.enabled, speed = orbitAppearance.effects.animations.layers.speed, bezier = "easeOutQuint" })
+hl.animation({ leaf = "layersIn", enabled = true, speed = 4, bezier = "easeOutQuint", style = animation_style(orbitAppearance.effects.animations.layers.type, "fade") })
+hl.animation({ leaf = "layersOut", enabled = true, speed = 1.5, bezier = "linear", style = animation_style(orbitAppearance.effects.animations.layers.type, "fade") })
 hl.animation({ leaf = "fadeLayersIn", enabled = true, speed = 1.79, bezier = "almostLinear" })
 hl.animation({ leaf = "fadeLayersOut", enabled = true, speed = 1.39, bezier = "almostLinear" })
-hl.animation({ leaf = "windowsMove", enabled = true, speed = 2.85, bezier = "almostLinear", style = "slide" })
+hl.animation({ leaf = "windowsMove", enabled = orbitAppearance.effects.animations.movement.enabled, speed = orbitAppearance.effects.animations.movement.speed, bezier = "almostLinear", style = animation_style(orbitAppearance.effects.animations.movement.type, "slide") })
 -- Workspaces are arranged vertically, so workspace changes slide vertically
 -- instead of fading between unrelated views.
-hl.animation({ leaf = "workspaces", enabled = true, speed = 2.0, bezier = "almostLinear", style = "slidefadevert -100%" })
-hl.animation({ leaf = "workspacesIn", enabled = true, speed = 2.45, bezier = "almostLinear", style = "slidefadevert -100%" })
-hl.animation({ leaf = "workspacesOut", enabled = true, speed = 2.0, bezier = "almostLinear", style = "slidefadevert -100%" })
+hl.animation({ leaf = "workspaces", enabled = orbitAppearance.effects.animations.workspaces.enabled, speed = orbitAppearance.effects.animations.workspaces.speed, bezier = "almostLinear", style = animation_style(orbitAppearance.effects.animations.workspaces.type, "slidefadevert -100%") })
+hl.animation({ leaf = "workspacesIn", enabled = orbitAppearance.effects.animations.workspaces.enabled, speed = 2.45, bezier = "almostLinear", style = animation_style(orbitAppearance.effects.animations.workspaces.type, "slidefadevert -100%") })
+hl.animation({ leaf = "workspacesOut", enabled = orbitAppearance.effects.animations.workspaces.enabled, speed = 2.0, bezier = "almostLinear", style = animation_style(orbitAppearance.effects.animations.workspaces.type, "slidefadevert -100%") })
 hl.animation({ leaf = "zoomFactor", enabled = true, speed = 7, bezier = "quick" })
 
 -- Keybindings

@@ -58,6 +58,24 @@ Item {
         return "Utilities"
     }
 
+    function categoryIcon(category) {
+        var icons = {
+            "All": "applications-all-symbolic",
+            "System": "preferences-system-symbolic",
+            "Utilities": "applications-utilities-symbolic",
+            "Graphics": "applications-graphics-symbolic",
+            "Games": "applications-games-symbolic",
+            "Media": "applications-multimedia-symbolic",
+            "Web": "applications-internet-symbolic",
+            "Social": "user-available-symbolic",
+            "Development": "applications-development-symbolic",
+            "Office": "x-office-document-symbolic",
+            "Education": "accessories-dictionary-symbolic",
+            "Science": "accessories-calculator-symbolic"
+        }
+        return icons[category] || "folder-symbolic"
+    }
+
     function matches(app) {
         var search = normalized(query).trim()
         if (!search)

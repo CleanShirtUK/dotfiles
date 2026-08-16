@@ -14,6 +14,8 @@ Environment=PS3_WAVE_BACKGROUND_FILE=%h/.cache/ps3-wave-wallpaper/hyprlock-backg
 Environment=PS3_WAVE_CONTROL_FILE=%h/.cache/ps3-wave-wallpaper/control
 Restart=on-failure
 RestartSec=2
+TimeoutStopSec=5
+FinalKillSignal=SIGKILL
 
 [Install]
 WantedBy=hyprland-session.target

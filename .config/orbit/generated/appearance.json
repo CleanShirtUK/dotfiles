@@ -1,0 +1,49 @@
+{
+  "style": {
+    "button_shape": "rounded",
+    "corner_radius": 10
+  },
+  "transparency": {
+    "active_opacity": 1,
+    "inactive_opacity": 0.95,
+    "shell_opacity": 0.35
+  },
+  "effects": {
+    "hyprglass_enabled": true,
+    "hyprglass_blur_type": "glass",
+    "hyprwindowshade_enabled": true,
+    "animations_enabled": true,
+    "animations": {
+      "global": {
+        "enabled": true,
+        "speed": 10,
+        "type": "default"
+      },
+      "windows": {
+        "enabled": true,
+        "speed": 2.9,
+        "type": "slide"
+      },
+      "fades": {
+        "enabled": true,
+        "speed": 1.5,
+        "type": "fade"
+      },
+      "layers": {
+        "enabled": true,
+        "speed": 3.81,
+        "type": "fade"
+      },
+      "workspaces": {
+        "enabled": true,
+        "speed": 2,
+        "type": "slidefadevert"
+      },
+      "movement": {
+        "enabled": true,
+        "speed": 2.85,
+        "type": "slide"
+      }
+    }
+  }
+}

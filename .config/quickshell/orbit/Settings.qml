@@ -1,6 +1,8 @@
 import Quickshell
 import QtQuick
-import QtQuick.Controls
+import QtQuick.Window
+import QtQuick.Controls as Controls
+import "components" as Orbit
 
 Window {
     id: root
@@ -13,7 +15,12 @@ Window {
     width: 1120
     height: 720
     visible: settingsData.settingsVisible
-    color: themeData.colors.window_background || "#1a1b26"
+    property string selectedPalette: settingsData.draft.theme ? settingsData.draft.theme.palette : "tokyo-night"
+    property var previewColors: settingsData.palettePreviews[selectedPalette] || themeData.colors
+    property var previewAppearance: settingsData.draft.appearance || ({})
+    property var previewStyle: previewAppearance.style || ({ corner_radius: 10 })
+    property var previewTransparency: previewAppearance.transparency || ({ shell_opacity: 1.0 })
+    color: previewColor("window_background", "#1a1b26")
     flags: Qt.Window
 
     onVisibleChanged: if (visible) Qt.callLater(function() {
@@ -26,11 +33,27 @@ Window {
         settingsData.requestClose()
     }
 
-    function textColor() { return themeData.colors.text || "#c0caf5" }
-    function mutedColor() { return themeData.colors.text_muted || "#9aa5ce" }
-    function surfaceColor() { return themeData.colors.surface || "#24283b" }
-    function selectedColor() { return themeData.colors.surface_selected || "#333954" }
-    function accentColor() { return themeData.colors.accent || "#7aa2f7" }
+    function previewColor(key, fallback) { return previewColors[key] || themeData.colors[key] || fallback }
+    function textColor() { return previewColor("text", "#c0caf5") }
+    function mutedColor() { return previewColor("text_muted", "#9aa5ce") }
+    function surfaceColor() { return previewColor("surface", "#24283b") }
+    function selectedColor() { return previewColor("surface_selected", "#333954") }
+    function accentColor() { return previewColor("accent", "#7aa2f7") }
+    function pageDescription(id) {
+        var descriptions = {
+            appearance: "Choose how Orbit and connected applications look.",
+            shell: "Configure launcher and shell behavior.",
+            wallpaper: "Manage the wallpaper source and appearance integration.",
+            displays: "Arrange monitors and assign Home and Gaming roles.",
+            audio: "Choose devices and adjust output and input levels.",
+            network: "Manage NetworkManager connections and Wi-Fi profiles.",
+            bluetooth: "Pair, connect, and manage Bluetooth devices.",
+            applications: "Control window placement, workspaces, and application rules.",
+            power: "Configure performance profiles and idle behavior.",
+            diagnostics: "Inspect Orbit capabilities and recover the shell."
+        }
+        return descriptions[id] || "Configure Orbit and the desktop session."
+    }
 
     FocusScope {
         id: settingsFocus
@@ -43,10 +66,10 @@ Window {
             anchors.centerIn: parent
             width: Math.min(parent.width - 44, 1120)
             height: Math.min(parent.height - 44, 720)
-            color: Qt.alpha(themeData.colors.window_background || "#1a1b26", 0.98)
-            border.color: themeData.colors.border || "#3d4355"
+            color: Qt.alpha(previewColor("window_background", "#1a1b26"), Number(previewTransparency.shell_opacity))
+            border.color: previewColor("border", "#3d4355")
             border.width: 1
-            radius: 16
+            radius: Number(root.previewStyle.corner_radius) + 4
 
             Row {
                 anchors.fill: parent
@@ -54,10 +77,10 @@ Window {
                 spacing: 18
 
                 Rectangle {
-                    width: 238
+                    width: 252
                     height: parent.height
-                    color: Qt.alpha(surfaceColor(), 0.72)
-                    radius: 12
+                    color: Qt.alpha(surfaceColor(), 0.54)
+                    radius: 14
 
                     Column {
                         anchors.fill: parent
@@ -65,18 +88,18 @@ Window {
                         spacing: 12
 
                         Text {
-                            text: "ORBIT SETTINGS"
+                            text: "Settings"
                             color: accentColor()
-                            font.family: "JetBrains Mono"
-                            font.pixelSize: 16
+                            font.family: themeData.uiFont
+                            font.pixelSize: 20
                             font.bold: true
                         }
 
                         Text {
                             text: "Shell and system control"
                             color: mutedColor()
-                            font.family: "JetBrains Mono"
-                            font.pixelSize: 10
+                            font.family: themeData.uiFont
+                            font.pixelSize: 11
                         }
 
                         ListView {
@@ -91,25 +114,58 @@ Window {
                             delegate: Rectangle {
                                 required property var modelData
                                 required property int index
+                                property bool showGroup: Boolean(modelData.group) && (index === 0 || menuList.model[index - 1].group !== modelData.group)
                                 width: menuList.width
-                                height: 38
-                                radius: 8
-                                color: index === menuList.currentIndex ? selectedColor() : "transparent"
+                                height: 42 + (showGroup ? 27 : 0)
+                                color: "transparent"
 
                                 Text {
+                                    visible: showGroup
                                     anchors.left: parent.left
                                     anchors.leftMargin: 12
-                                    anchors.verticalCenter: parent.verticalCenter
-                                    text: modelData.label || modelData.id
-                                    color: index === menuList.currentIndex ? textColor() : mutedColor()
-                                    font.family: "JetBrains Mono"
-                                    font.pixelSize: 11
-                                    elide: Text.ElideRight
+                                    anchors.top: parent.top
+                                    height: 25
+                                    text: modelData.group
+                                    color: mutedColor()
+                                    font.family: themeData.uiFont
+                                    font.pixelSize: 10
+                                    font.bold: true
+                                    verticalAlignment: Text.AlignVCenter
                                 }
 
-                                MouseArea {
-                                    anchors.fill: parent
-                                    onClicked: menuList.currentIndex = index
+                                Rectangle {
+                                    y: showGroup ? 27 : 0
+                                    width: parent.width
+                                    height: 42
+                                    radius: 10
+                                    color: index === menuList.currentIndex ? Qt.alpha(accentColor(), 0.18) : "transparent"
+
+                                    OrbitIcon {
+                                        anchors.left: parent.left
+                                        anchors.leftMargin: 12
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        width: 20
+                                        height: 20
+                                        iconName: modelData.icon || ""
+                                        iconSize: 32
+                                        opacity: index === menuList.currentIndex ? 1 : 0.72
+                                    }
+
+                                    Text {
+                                        anchors.left: parent.left
+                                        anchors.leftMargin: 42
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        text: modelData.label || modelData.id
+                                        color: index === menuList.currentIndex ? textColor() : mutedColor()
+                                        font.family: themeData.uiFont
+                                        font.pixelSize: 12
+                                        elide: Text.ElideRight
+                                    }
+
+                                    MouseArea {
+                                        anchors.fill: parent
+                                        onClicked: menuList.currentIndex = index
+                                    }
                                 }
                             }
                         }
@@ -123,40 +179,48 @@ Window {
 
                     Row {
                         width: parent.width
-                        height: 34
+                        height: 54
                         spacing: 12
 
-                        Text {
-                            text: settingsData.menu.length > menuList.currentIndex ? (settingsData.menu[menuList.currentIndex].label || "Settings") : "Settings"
-                            color: textColor()
-                            font.family: "JetBrains Mono"
-                            font.pixelSize: 18
-                            font.bold: true
+                        Column {
                             anchors.verticalCenter: parent.verticalCenter
+                            spacing: 2
+                            Text {
+                                text: settingsData.menu.length > menuList.currentIndex ? (settingsData.menu[menuList.currentIndex].label || "Settings") : "Settings"
+                                color: textColor()
+                                font.family: themeData.uiFont
+                                font.pixelSize: 20
+                                font.bold: true
+                            }
+                            Text {
+                                text: settingsData.menu.length > menuList.currentIndex ? root.pageDescription(settingsData.menu[menuList.currentIndex].id) : "Configure Orbit and the desktop session."
+                                color: mutedColor()
+                                font.family: themeData.uiFont
+                                font.pixelSize: 11
+                            }
                         }
 
                         Item { width: parent.width - 170; height: 1 }
 
-                        Rectangle {
-                            width: 34
-                            height: 34
-                            radius: 8
-                            color: closeMouse.containsMouse ? (themeData.colors.error || "#f7768e") : selectedColor()
-                            Text { anchors.centerIn: parent; text: "X"; color: textColor(); font.bold: true }
-                            MouseArea { id: closeMouse; anchors.fill: parent; hoverEnabled: true; onClicked: settingsData.requestClose() }
+                        Orbit.OrbitIconButton {
+                            themeData: root.themeData
+                            iconSource: Quickshell.iconPath("window-close-symbolic")
+                            accessibleLabel: "Close settings"
+                            onClicked: settingsData.requestClose()
                         }
                     }
 
                     Loader {
                         id: moduleLoader
                         width: parent.width
-                        height: parent.height - 96
+                         height: parent.height - 116
                         sourceComponent: {
                             if (!settingsData.menu.length)
                                 return diagnosticsPage
                             var id = settingsData.menu[menuList.currentIndex].id
                             if (id === "appearance") return appearancePage
                             if (id === "shell") return shellPage
+                            if (id === "wallpaper") return wallpaperPage
                             if (id === "displays") return displaysPage
                             if (id === "applications") return applicationsNewPage
                             if (id === "audio") return audioPage
@@ -183,13 +247,17 @@ Window {
                             anchors.verticalCenter: parent.verticalCenter
                         }
 
-                        Button {
+                        Orbit.OrbitButton {
+                            themeData: root.themeData
                             text: "Cancel"
+                            subtle: true
                             enabled: settingsData.dirty
                             onClicked: settingsData.cancel()
                         }
-                        Button {
+                        Orbit.OrbitButton {
+                            themeData: root.themeData
                             text: "Apply"
+                            highlighted: true
                             enabled: settingsData.dirty
                             onClicked: settingsData.requestApply()
                         }
@@ -201,24 +269,270 @@ Window {
 
     Component {
         id: appearancePage
+        Item {
+            id: appearanceRoot
+            property string section: "colours"
+            property var appearance: settingsData.draft.appearance || ({})
+            property var style: appearance.style || ({ button_shape: "rounded", corner_radius: 10 })
+            property var transparency: appearance.transparency || ({ active_opacity: 1.0, inactive_opacity: 0.9, shell_opacity: 1.0 })
+            property var effects: appearance.effects || ({})
+            property var animations: effects.animations || ({})
+            property bool customPaletteVisible: false
+
+            Row {
+                anchors.fill: parent
+                spacing: 14
+
+                Column {
+                    width: 150
+                    spacing: 5
+                    Repeater {
+                        model: [
+                            ["colours", "Colours"],
+                            ["styles", "Styles"],
+                            ["transparency", "Transparency"],
+                            ["effects", "Effects"]
+                        ]
+                        delegate: Rectangle {
+                            required property var modelData
+                            width: 150
+                            height: 34
+                            radius: 7
+                            color: appearanceRoot.section === modelData[0] ? selectedColor() : "transparent"
+                            Text {
+                                anchors.left: parent.left
+                                anchors.leftMargin: 10
+                                anchors.verticalCenter: parent.verticalCenter
+                                text: modelData[1]
+                                color: appearanceRoot.section === modelData[0] ? textColor() : mutedColor()
+                                font.family: "JetBrains Mono"
+                                font.pixelSize: 10
+                            }
+                            MouseArea { anchors.fill: parent; onClicked: appearanceRoot.section = modelData[0] }
+                        }
+                    }
+                }
+
+                Loader {
+                    width: parent.width - 164
+                    height: parent.height
+                    sourceComponent: appearanceRoot.section === "colours" ? coloursSection
+                        : appearanceRoot.section === "styles" ? stylesSection
+                        : appearanceRoot.section === "transparency" ? transparencySection
+                        : effectsSection
+                }
+            }
+        }
+    }
+
+    Component {
+        id: coloursSection
         Flickable {
+            id: coloursSectionRoot
             contentWidth: width
-            contentHeight: appearanceColumn.height
+            contentHeight: coloursColumn.height
             clip: true
+            property bool customPaletteVisible: false
             Column {
-                id: appearanceColumn
-                width: moduleLoader.width
+                id: coloursColumn
+                width: parent.width
                 spacing: 12
-                Text { text: "Palette"; color: textColor(); font.family: "JetBrains Mono"; font.pixelSize: 13; font.bold: true }
-                Text { text: "Orbit generates the shared semantic and toolkit artifacts from this palette."; color: mutedColor(); font.family: "JetBrains Mono"; font.pixelSize: 10; wrapMode: Text.WordWrap; width: parent.width }
-                ComboBox {
-                    width: Math.min(parent.width, 360)
-                    model: settingsData.palettes
-                    currentIndex: Math.max(0, settingsData.palettes.indexOf(settingsData.draft.theme ? settingsData.draft.theme.palette : ""))
-                    onActivated: settingsData.setThemePalette(currentText)
+                Text { text: "Colours"; color: textColor(); font.family: "JetBrains Mono"; font.pixelSize: 13; font.bold: true }
+                Text { text: "Select a shared palette for Orbit, Hyprland, and connected toolkits."; color: mutedColor(); font.family: "JetBrains Mono"; font.pixelSize: 10; wrapMode: Text.WordWrap; width: parent.width }
+                Flow {
+                    width: parent.width
+                    spacing: 10
+                    add: Transition { NumberAnimation { properties: "x,y"; duration: 140; easing.type: Easing.OutCubic } }
+                    Repeater {
+                        model: settingsData.palettes
+                        delegate: Rectangle {
+                            required property string modelData
+                            width: Math.min(184, (coloursSectionRoot.width - 10) / 2)
+                            height: 92
+                            radius: 12
+                            color: modelData === root.selectedPalette ? Qt.alpha(accentColor(), 0.16) : Qt.alpha(surfaceColor(), 0.58)
+                            border.width: modelData === root.selectedPalette ? 2 : 1
+                            border.color: modelData === root.selectedPalette ? accentColor() : (themeData.colors.border || "#3d4355")
+                            Column {
+                                anchors.fill: parent
+                                anchors.margins: 12
+                                spacing: 8
+                                Row {
+                                    width: parent.width
+                                    Text { width: parent.width - 24; text: modelData; color: textColor(); font.family: themeData.uiFont; font.pixelSize: 12; font.bold: modelData === root.selectedPalette; elide: Text.ElideRight }
+                                    Text { text: modelData === root.selectedPalette ? "✓" : ""; color: accentColor(); font.family: themeData.uiFont; font.pixelSize: 14; font.bold: true }
+                                }
+                                Row {
+                                    width: parent.width
+                                    spacing: 2
+                                    Repeater {
+                                        model: ["background", "surface", "accent", "text"]
+                                        delegate: Rectangle {
+                                            required property string modelData
+                                            width: (parent.parent.width - 6) / 4
+                                            height: 34
+                                            radius: 6
+                                            color: (settingsData.palettePreviews[parent.parent.parent.modelData] || {})[modelData] || "#24283b"
+                                            border.color: Qt.alpha(textColor(), 0.2)
+                                            border.width: 1
+                                        }
+                                    }
+                                }
+                            }
+                            MouseArea { anchors.fill: parent; onClicked: settingsData.setThemePalette(modelData) }
+                        }
+                    }
                 }
                 Rectangle { width: parent.width; height: 1; color: themeData.colors.border || "#3d4355" }
-                Text { text: "The palette change is staged until Apply."; color: mutedColor(); font.family: "JetBrains Mono"; font.pixelSize: 10 }
+                Text { text: "Wallpaper-derived palette"; color: textColor(); font.family: "JetBrains Mono"; font.pixelSize: 11; font.bold: true }
+                Button {
+                    text: settingsData.wallpaper.mode === "shader" ? "Unavailable while shader wallpaper is active" : "Derive palette from wallpaper"
+                    enabled: settingsData.wallpaper.mode !== "shader"
+                }
+                Text { text: settingsData.wallpaper.mode === "shader" ? "The current PS3 shader has no source image to sample." : "The wallpaper backend can provide a source for palette derivation."; color: mutedColor(); font.family: "JetBrains Mono"; font.pixelSize: 10; wrapMode: Text.WordWrap; width: parent.width }
+                Text { text: "Custom palette"; color: textColor(); font.family: "JetBrains Mono"; font.pixelSize: 11; font.bold: true }
+                Button { text: coloursSectionRoot.customPaletteVisible ? "Hide custom palette editor" : "Create custom palette"; onClicked: coloursSectionRoot.customPaletteVisible = !coloursSectionRoot.customPaletteVisible }
+                Column {
+                    visible: coloursSectionRoot.customPaletteVisible
+                    spacing: 8
+                    property string customName: "orbit-custom"
+                    property string customLabel: "Orbit Custom"
+                    property string background: themeData.colors.window_background || "#1a1b26"
+                    property string surface: themeData.colors.surface || "#24283b"
+                    property string accent: themeData.colors.accent || "#7aa2f7"
+                    property string textValue: themeData.colors.text || "#c0caf5"
+                    TextField { width: 300; placeholderText: "Palette id (lowercase-dashes)"; text: parent.customName; onTextChanged: parent.customName = text }
+                    TextField { width: 300; placeholderText: "Palette display name"; text: parent.customLabel; onTextChanged: parent.customLabel = text }
+                    Row {
+                        spacing: 8
+                        Text { text: "Background"; color: mutedColor(); width: 80; anchors.verticalCenter: parent.verticalCenter }
+                        TextField { width: 180; text: parent.parent.background; onTextChanged: parent.parent.background = text }
+                    }
+                    Row {
+                        spacing: 8
+                        Text { text: "Surface"; color: mutedColor(); width: 80; anchors.verticalCenter: parent.verticalCenter }
+                        TextField { width: 180; text: parent.parent.surface; onTextChanged: parent.parent.surface = text }
+                    }
+                    Row {
+                        spacing: 8
+                        Text { text: "Accent"; color: mutedColor(); width: 80; anchors.verticalCenter: parent.verticalCenter }
+                        TextField { width: 180; text: parent.parent.accent; onTextChanged: parent.parent.accent = text }
+                    }
+                    Row {
+                        spacing: 8
+                        Text { text: "Text"; color: mutedColor(); width: 80; anchors.verticalCenter: parent.verticalCenter }
+                        TextField { width: 180; text: parent.parent.textValue; onTextChanged: parent.parent.textValue = text }
+                    }
+                    Button { text: "Stage custom palette"; onClicked: settingsData.setCustomPalette(parent.customName, parent.customLabel, { background: parent.background, surface: parent.surface, accent: parent.accent, text: parent.textValue }) }
+                }
+                Text { text: "Custom palettes use the same validated TOML schema as the built-in palettes."; color: mutedColor(); font.family: "JetBrains Mono"; font.pixelSize: 10; wrapMode: Text.WordWrap; width: parent.width }
+            }
+        }
+    }
+
+    Component {
+        id: stylesSection
+        Flickable {
+            id: stylesSectionRoot
+            contentWidth: width
+            contentHeight: stylesColumn.height
+            clip: true
+            property var style: (settingsData.draft.appearance && settingsData.draft.appearance.style) || ({ button_shape: "rounded", corner_radius: 10 })
+            Column {
+                id: stylesColumn
+                width: parent.width
+                spacing: 14
+                Text { text: "Styles"; color: textColor(); font.family: "JetBrains Mono"; font.pixelSize: 13; font.bold: true }
+                Text { text: "These values are shared where GTK, Qt, QuickShell, and Hyprland expose equivalent controls."; color: mutedColor(); font.family: "JetBrains Mono"; font.pixelSize: 10; wrapMode: Text.WordWrap; width: parent.width }
+                Row {
+                    spacing: 12
+                    Text { text: "Button shape"; color: textColor(); font.family: "JetBrains Mono"; font.pixelSize: 11; width: 130; anchors.verticalCenter: parent.verticalCenter }
+                    ComboBox { model: ["rounded", "square", "pill"]; currentIndex: model.indexOf(stylesSectionRoot.style.button_shape); onActivated: settingsData.setAppearanceValue("style", "button_shape", currentText) }
+                }
+                Row {
+                    spacing: 12
+                    Text { text: "Corner roundness"; color: textColor(); font.family: "JetBrains Mono"; font.pixelSize: 11; width: 130; anchors.verticalCenter: parent.verticalCenter }
+                    Slider { from: 0; to: 32; stepSize: 1; value: stylesSectionRoot.style.corner_radius; onMoved: settingsData.setAppearanceValue("style", "corner_radius", Math.round(value)) }
+                    Text { text: Math.round(stylesSectionRoot.style.corner_radius) + " px"; color: mutedColor(); font.family: "JetBrains Mono"; font.pixelSize: 10; anchors.verticalCenter: parent.verticalCenter }
+                }
+            }
+        }
+    }
+
+    Component {
+        id: transparencySection
+        Flickable {
+            id: transparencySectionRoot
+            contentWidth: width
+            contentHeight: transparencyColumn.height
+            clip: true
+            property var transparency: (settingsData.draft.appearance && settingsData.draft.appearance.transparency) || ({ active_opacity: 1.0, inactive_opacity: 0.9, shell_opacity: 1.0 })
+            Column {
+                id: transparencyColumn
+                width: parent.width
+                spacing: 14
+                Text { text: "Transparency"; color: textColor(); font.family: "JetBrains Mono"; font.pixelSize: 13; font.bold: true }
+                Text { text: "Standard Hyprland opacity is separate from Hyprglass. Lower values reveal the wallpaper without enabling a blur effect."; color: mutedColor(); font.family: "JetBrains Mono"; font.pixelSize: 10; wrapMode: Text.WordWrap; width: parent.width }
+                Repeater {
+                    model: [["Active window", "active_opacity"], ["Inactive window", "inactive_opacity"], ["Orbit shell", "shell_opacity"]]
+                    delegate: Row {
+                        required property var modelData
+                        width: transparencyColumn.width
+                        spacing: 12
+                        Text { text: modelData[0]; color: textColor(); font.family: "JetBrains Mono"; font.pixelSize: 11; width: 130; anchors.verticalCenter: parent.verticalCenter }
+                        Slider { from: 0; to: 1; stepSize: 0.05; value: transparencySectionRoot.transparency[modelData[1]]; onMoved: settingsData.setAppearanceValue("transparency", modelData[1], Math.round(value * 100) / 100) }
+                        Text { text: Math.round(transparencySectionRoot.transparency[modelData[1]] * 100) + "%"; color: mutedColor(); font.family: "JetBrains Mono"; font.pixelSize: 10; anchors.verticalCenter: parent.verticalCenter }
+                    }
+                }
+            }
+        }
+    }
+
+    Component {
+        id: effectsSection
+        Flickable {
+            id: effectsSectionRoot
+            contentWidth: width
+            contentHeight: effectsColumn.height
+            clip: true
+            property var effects: (settingsData.draft.appearance && settingsData.draft.appearance.effects) || ({})
+            property var animations: effects.animations || ({})
+            property var animationTypeLabels: ["Default", "Fade", "Slide", "Pop-in", "Slide + fade", "Vertical slide + fade"]
+            property var animationTypeValues: ["default", "fade", "slide", "popin", "slidefade", "slidefadevert"]
+            Column {
+                id: effectsColumn
+                width: parent.width
+                spacing: 12
+                Text { text: "Effects"; color: textColor(); font.family: "JetBrains Mono"; font.pixelSize: 13; font.bold: true }
+                CheckBox { text: "Enable Hyprglass"; checked: effectsSectionRoot.effects.hyprglass_enabled !== false; onToggled: settingsData.setAppearanceValue("effects", "hyprglass_enabled", checked) }
+                Row {
+                    spacing: 12
+                    Text { text: "Blur type"; color: textColor(); font.family: "JetBrains Mono"; font.pixelSize: 11; width: 130; anchors.verticalCenter: parent.verticalCenter }
+                    ComboBox { model: ["glass", "soft", "clear"]; currentIndex: model.indexOf(effectsSectionRoot.effects.hyprglass_blur_type || "glass"); onActivated: settingsData.setAppearanceValue("effects", "hyprglass_blur_type", currentText) }
+                }
+                CheckBox { text: "Enable HyprWindowShade shader"; checked: effectsSectionRoot.effects.hyprwindowshade_enabled !== false; onToggled: settingsData.setAppearanceValue("effects", "hyprwindowshade_enabled", checked) }
+                Rectangle { width: parent.width; height: 1; color: themeData.colors.border || "#3d4355" }
+                CheckBox { text: "Enable animations"; checked: effectsSectionRoot.effects.animations_enabled !== false; onToggled: settingsData.setAppearanceValue("effects", "animations_enabled", checked) }
+                Text { text: "Animation groups"; color: textColor(); font.family: "JetBrains Mono"; font.pixelSize: 11; font.bold: true }
+                Text { text: "Speed controls how quickly the animation completes. Higher values are faster."; color: mutedColor(); font.family: "JetBrains Mono"; font.pixelSize: 10; wrapMode: Text.WordWrap; width: parent.width }
+                Repeater {
+                    model: [["global", "Global and borders"], ["windows", "Windows"], ["fades", "Window fades"], ["layers", "Layers"], ["workspaces", "Workspaces"], ["movement", "Movement and zoom"]]
+                    delegate: Row {
+                        required property var modelData
+                        width: effectsColumn.width
+                        spacing: 8
+                        CheckBox { checked: effectsSectionRoot.animations[modelData[0]] ? effectsSectionRoot.animations[modelData[0]].enabled !== false : true; onToggled: settingsData.setAnimationValue(modelData[0], "enabled", checked) }
+                        Text { text: modelData[1]; color: textColor(); font.family: "JetBrains Mono"; font.pixelSize: 10; width: 130; anchors.verticalCenter: parent.verticalCenter }
+                        ComboBox {
+                            width: 128
+                            model: effectsSectionRoot.animationTypeLabels
+                            currentIndex: Math.max(0, effectsSectionRoot.animationTypeValues.indexOf(effectsSectionRoot.animations[modelData[0]] ? effectsSectionRoot.animations[modelData[0]].type : "default"))
+                            onActivated: settingsData.setAnimationValue(modelData[0], "type", effectsSectionRoot.animationTypeValues[index])
+                        }
+                        Slider { width: 150; from: 0.5; to: 12; stepSize: 0.1; value: effectsSectionRoot.animations[modelData[0]] ? effectsSectionRoot.animations[modelData[0]].speed : 1; onMoved: settingsData.setAnimationValue(modelData[0], "speed", Math.round(value * 100) / 100) }
+                        Text { text: "Speed " + (effectsSectionRoot.animations[modelData[0]] ? Number(effectsSectionRoot.animations[modelData[0]].speed).toFixed(2) : "1.00"); color: mutedColor(); font.family: "JetBrains Mono"; font.pixelSize: 10; anchors.verticalCenter: parent.verticalCenter }
+                    }
+                }
             }
         }
     }
@@ -234,6 +548,64 @@ Window {
                 onToggled: settingsData.setXmbFullscreen(checked)
             }
             Text { text: "The XMB normally opens as a widget-sized focused-monitor overlay."; color: mutedColor(); font.family: "JetBrains Mono"; font.pixelSize: 10; wrapMode: Text.WordWrap; width: parent.width }
+        }
+    }
+
+    Component {
+        id: wallpaperPage
+        Flickable {
+            contentWidth: width
+            contentHeight: wallpaperColumn.height
+            clip: true
+
+            Column {
+                id: wallpaperColumn
+                width: parent.width
+                spacing: 14
+
+                Text { text: "Wallpaper"; color: textColor(); font.family: themeData.uiFont; font.pixelSize: 14; font.bold: true }
+                Text {
+                    text: "Orbit reads the active wallpaper mode so appearance features can integrate safely with it."
+                    color: mutedColor()
+                    font.family: themeData.uiFont
+                    font.pixelSize: 11
+                    wrapMode: Text.WordWrap
+                    width: parent.width
+                }
+
+                Rectangle {
+                    width: parent.width
+                    height: wallpaperStatus.height + 28
+                    color: Qt.alpha(surfaceColor(), 0.62)
+                    radius: 12
+                    border.color: themeData.colors.border || "#3d4355"
+                    border.width: 1
+                    Column {
+                        id: wallpaperStatus
+                        anchors.left: parent.left
+                        anchors.right: parent.right
+                        anchors.top: parent.top
+                        anchors.margins: 14
+                        spacing: 6
+                        Text { text: "Current wallpaper source"; color: accentColor(); font.family: themeData.uiFont; font.pixelSize: 12; font.bold: true }
+                        Text { text: settingsData.wallpaper.mode === "shader" ? "PS3 wave shader" : String(settingsData.wallpaper.mode || "Unknown"); color: textColor(); font.family: themeData.uiFont; font.pixelSize: 13 }
+                        Text { text: settingsData.wallpaper.mode === "shader" ? "Shader wallpaper does not expose a source image for palette sampling." : "The wallpaper backend can provide a source image for palette integration."; color: mutedColor(); font.family: themeData.uiFont; font.pixelSize: 11; wrapMode: Text.WordWrap; width: parent.width }
+                        Row {
+                            spacing: 10
+                            Text { text: "Service: " + settingsData.wallpaperServiceStatus; color: settingsData.wallpaperServiceStatus === "active" ? (themeData.colors.success || "#9ece6a") : (themeData.colors.warning || "#e0af68"); font.family: themeData.uiFont; font.pixelSize: 11; anchors.verticalCenter: parent.verticalCenter }
+                            Orbit.OrbitButton {
+                                themeData: root.themeData
+                                compact: true
+                                text: settingsData.wallpaperServiceStatus === "active" ? "Restart service" : "Start service"
+                                highlighted: settingsData.wallpaperServiceStatus !== "active"
+                                onClicked: settingsData.restartWallpaperService()
+                            }
+                        }
+                    }
+                }
+
+                Text { text: "Wallpaper controls are not connected yet."; color: mutedColor(); font.family: themeData.uiFont; font.pixelSize: 11 }
+            }
         }
     }
 
@@ -869,7 +1241,6 @@ Window {
                             cellWidth: width / 2
                             cellHeight: 44
                             model: applicationView.installedApplications()
-                            ScrollBar.vertical: ScrollBar { policy: ScrollBar.AlwaysOn }
                             delegate: Rectangle {
                                 required property var modelData
                                 width: newApplicationSelect.cellWidth - 4
@@ -946,73 +1317,690 @@ Window {
 
     Component {
         id: audioPage
-        Column {
-            spacing: 14
-            Text { text: "Default output"; color: textColor(); font.family: "JetBrains Mono"; font.pixelSize: 13; font.bold: true }
-            Slider {
-                width: Math.min(parent.width, 520)
-                from: 0
-                to: 1.5
-                value: settingsData.draft.system && settingsData.draft.system.audio ? settingsData.draft.system.audio.volume : 1
-                onMoved: settingsData.setAudioVolume(value)
+        Flickable {
+            contentWidth: width
+            contentHeight: audioColumn.height
+            clip: true
+            Column {
+                id: audioColumn
+                width: parent.width
+                spacing: 16
+                property var audio: settingsData.draft.system && settingsData.draft.system.audio ? settingsData.draft.system.audio : ({})
+                Text { text: "Choose where sound plays and which microphone applications use. Changes apply immediately."; color: mutedColor(); font.family: themeData.uiFont; font.pixelSize: 11; wrapMode: Text.WordWrap; width: parent.width }
+                Text { visible: settingsData.systemActionStatus !== ""; text: settingsData.systemActionStatus; color: themeData.colors.warning || "#e0af68"; font.family: themeData.uiFont; font.pixelSize: 11 }
+
+                Text { text: "Output"; color: textColor(); font.family: themeData.uiFont; font.pixelSize: 13; font.bold: true }
+                Repeater {
+                    model: audioColumn.audio.sinks || []
+                    delegate: Rectangle {
+                        required property var modelData
+                        width: audioColumn.width
+                        height: outputCardColumn.height + 24
+                        color: modelData.default ? Qt.alpha(accentColor(), 0.12) : Qt.alpha(surfaceColor(), 0.55)
+                        radius: 12
+                        border.width: modelData.default ? 2 : 1
+                        border.color: modelData.default ? accentColor() : (themeData.colors.border || "#3d4355")
+                        Column {
+                            id: outputCardColumn
+                            anchors.left: parent.left
+                            anchors.right: parent.right
+                            anchors.top: parent.top
+                            anchors.margins: 12
+                            spacing: 10
+                            Row {
+                                width: parent.width
+                                spacing: 10
+                                Image { width: 24; height: 24; source: Quickshell.iconPath("audio-speakers-symbolic"); sourceSize: Qt.size(24, 24); anchors.verticalCenter: parent.verticalCenter }
+                                Column {
+                                    width: parent.width - 136
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    Text { text: modelData.name; color: textColor(); font.family: themeData.uiFont; font.pixelSize: 12; elide: Text.ElideRight; width: parent.width }
+                                }
+                                CheckBox {
+                                    width: 100
+                                    text: "Default"
+                                    checked: modelData.default
+                                    themeData: root.themeData
+                                    onClicked: if (!modelData.default) settingsData.setDefaultAudioSink(modelData.id)
+                                }
+                            }
+                            Row {
+                                width: parent.width
+                                spacing: 10
+                                Text { text: "Volume"; width: 50; color: mutedColor(); font.family: themeData.uiFont; font.pixelSize: 11; anchors.verticalCenter: parent.verticalCenter }
+                                Slider { width: parent.width - 180; from: 0; to: 1.5; stepSize: 0.01; value: modelData.volume || 0; onMoved: settingsData.setAudioDeviceVolume(modelData.id, value, false) }
+                                Text { text: Math.round((modelData.volume || 0) * 100) + "%"; width: 42; color: textColor(); font.family: themeData.uiFont; font.pixelSize: 11; horizontalAlignment: Text.AlignRight; anchors.verticalCenter: parent.verticalCenter }
+                                Orbit.OrbitButton { width: 58; compact: true; themeData: root.themeData; text: modelData.muted ? "Unmute" : "Mute"; subtle: !modelData.muted; onClicked: settingsData.setAudioDeviceMuted(modelData.id, !modelData.muted, false) }
+                            }
+                        }
+                    }
+                }
+                Text { visible: !(audioColumn.audio.sinks || []).length; text: "No output devices reported by PipeWire."; color: mutedColor(); font.family: themeData.uiFont; font.pixelSize: 11 }
+
+                Text { text: "Input"; color: textColor(); font.family: themeData.uiFont; font.pixelSize: 13; font.bold: true }
+                Repeater {
+                    model: audioColumn.audio.sources || []
+                    delegate: Rectangle {
+                        required property var modelData
+                        width: audioColumn.width
+                        height: inputCardColumn.height + 24
+                        color: modelData.default ? Qt.alpha(accentColor(), 0.12) : Qt.alpha(surfaceColor(), 0.55)
+                        radius: 12
+                        border.width: modelData.default ? 2 : 1
+                        border.color: modelData.default ? accentColor() : (themeData.colors.border || "#3d4355")
+                        Column {
+                            id: inputCardColumn
+                            anchors.left: parent.left
+                            anchors.right: parent.right
+                            anchors.top: parent.top
+                            anchors.margins: 12
+                            spacing: 10
+                            Row {
+                                width: parent.width
+                                spacing: 10
+                                Image { width: 24; height: 24; source: Quickshell.iconPath("audio-input-microphone-symbolic"); sourceSize: Qt.size(24, 24); anchors.verticalCenter: parent.verticalCenter }
+                                Column {
+                                    width: parent.width - 136
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    Text { text: modelData.name; color: textColor(); font.family: themeData.uiFont; font.pixelSize: 12; elide: Text.ElideRight; width: parent.width }
+                                }
+                                CheckBox {
+                                    width: 100
+                                    text: "Default"
+                                    checked: modelData.default
+                                    themeData: root.themeData
+                                    onClicked: if (!modelData.default) settingsData.setDefaultAudioSource(modelData.id)
+                                }
+                            }
+                            Row {
+                                width: parent.width
+                                spacing: 10
+                                Text { text: "Volume"; width: 50; color: mutedColor(); font.family: themeData.uiFont; font.pixelSize: 11; anchors.verticalCenter: parent.verticalCenter }
+                                Slider { width: parent.width - 180; from: 0; to: 1.5; stepSize: 0.01; value: modelData.volume || 0; onMoved: settingsData.setAudioDeviceVolume(modelData.id, value, true) }
+                                Text { text: Math.round((modelData.volume || 0) * 100) + "%"; width: 42; color: textColor(); font.family: themeData.uiFont; font.pixelSize: 11; horizontalAlignment: Text.AlignRight; anchors.verticalCenter: parent.verticalCenter }
+                                Orbit.OrbitButton { width: 58; compact: true; themeData: root.themeData; text: modelData.muted ? "Unmute" : "Mute"; subtle: !modelData.muted; onClicked: settingsData.setAudioDeviceMuted(modelData.id, !modelData.muted, true) }
+                            }
+                        }
+                    }
+                }
+                Text { visible: !(audioColumn.audio.sources || []).length; text: "No input devices reported by PipeWire."; color: mutedColor(); font.family: themeData.uiFont; font.pixelSize: 11 }
+
+                Rectangle {
+                    width: parent.width
+                    height: streamsColumn.height + 24
+                    color: Qt.alpha(surfaceColor(), 0.42)
+                    radius: 12
+                    border.color: themeData.colors.border || "#3d4355"
+                    border.width: 1
+                    Column {
+                        id: streamsColumn
+                        anchors.left: parent.left
+                        anchors.right: parent.right
+                        anchors.top: parent.top
+                        anchors.margins: 12
+                        spacing: 8
+                        Text { text: "Active streams"; color: textColor(); font.family: themeData.uiFont; font.pixelSize: 13; font.bold: true }
+                        Text { text: "Applications currently sending or receiving audio."; color: mutedColor(); font.family: themeData.uiFont; font.pixelSize: 11 }
+                        Repeater {
+                            model: audioColumn.audio.streams || []
+                            delegate: Row {
+                                required property var modelData
+                                width: streamsColumn.width
+                                spacing: 8
+                                Image { width: 18; height: 18; source: Quickshell.iconPath("multimedia-player-symbolic"); sourceSize: Qt.size(18, 18); anchors.verticalCenter: parent.verticalCenter }
+                                Text { text: modelData.name; color: textColor(); font.family: themeData.uiFont; font.pixelSize: 11; elide: Text.ElideRight; width: parent.width - 26; anchors.verticalCenter: parent.verticalCenter }
+                            }
+                        }
+                        Text { visible: !(audioColumn.audio.streams || []).length; text: "No active audio streams."; color: mutedColor(); font.family: themeData.uiFont; font.pixelSize: 11 }
+                    }
+                }
+                Text { visible: !settingsData.capabilities.wpctl; text: "wpctl is not available in this session."; color: themeData.colors.warning || "#e0af68"; font.family: themeData.uiFont; font.pixelSize: 11 }
             }
-            Text { text: Math.round((settingsData.draft.system && settingsData.draft.system.audio ? settingsData.draft.system.audio.volume : 1) * 100) + "%"; color: mutedColor(); font.family: "JetBrains Mono"; font.pixelSize: 11 }
-            CheckBox {
-                text: "Mute default output"
-                checked: Boolean(settingsData.draft.system && settingsData.draft.system.audio && settingsData.draft.system.audio.muted)
-                onToggled: settingsData.setAudioMuted(checked)
-            }
-            Text { text: settingsData.capabilities.wpctl ? "Changes use PipeWire through wpctl and are applied when you press Apply." : "wpctl is not available in this session."; color: mutedColor(); font.family: "JetBrains Mono"; font.pixelSize: 10; wrapMode: Text.WordWrap; width: parent.width }
         }
     }
 
     Component {
         id: networkPage
-        Column {
-            spacing: 14
-            Text { text: "Network connection"; color: textColor(); font.family: "JetBrains Mono"; font.pixelSize: 13; font.bold: true }
-            ComboBox {
-                width: Math.min(parent.width, 520)
-                model: settingsData.draft.system && settingsData.draft.system.network ? settingsData.draft.system.network.connections.map(function(item) { return item.name }) : []
-                onActivated: settingsData.setNetworkConnection(currentText)
+        Item {
+            id: networkEditor
+            property var network: settingsData.draft.system && settingsData.draft.system.network ? settingsData.draft.system.network : ({})
+            property string selectedName: ""
+            property string selectedTab: "general"
+            property bool newDialogVisible: false
+            property string newName: ""
+            property string newSsid: ""
+            property string newType: "wifi"
+            property string wifiSearch: ""
+            property string wifiPassword: ""
+            property bool wifiBrowserVisible: false
+
+            onNetworkChanged: selectFirst()
+
+            property string interfaceValue: ""
+            property string ssidValue: ""
+            property string wifiModeValue: "infrastructure"
+            property string securityValue: ""
+            property string passwordValue: ""
+            property string ipv4MethodValue: "auto"
+            property string ipv4AddressesValue: ""
+            property string ipv4GatewayValue: ""
+            property string ipv4DnsValue: ""
+            property string ipv6MethodValue: "auto"
+            property string ipv6AddressesValue: ""
+            property string ipv6GatewayValue: ""
+            property string ipv6DnsValue: ""
+            property string proxyMethodValue: "none"
+            property bool autoconnectValue: true
+
+            function profiles() {
+                return (network.connections || []).filter(function(item) {
+                    return ["bridge", "loopback", "tun"].indexOf(item.type) < 0
+                })
             }
-            Text { text: settingsData.capabilities.nmcli ? "Selecting a connection and pressing Apply activates it through NetworkManager." : "nmcli is not available in this session."; color: mutedColor(); font.family: "JetBrains Mono"; font.pixelSize: 10; wrapMode: Text.WordWrap; width: parent.width }
+            function isWifi() {
+                var profile = selectedProfile()
+                return profile && profile.type === "802-11-wireless"
+            }
+            function tabs() {
+                var values = [["general", "General"]]
+                if (isWifi()) values.push(["wifi", "Wi-Fi"])
+                values.push(["ipv4", "IPv4"], ["ipv6", "IPv6"], ["proxy", "Proxy"])
+                return values
+            }
+            function wifiNetworks() {
+                var query = wifiSearch.toLowerCase()
+                return (network.wifi_networks || []).filter(function(item) {
+                    return !query || item.ssid.toLowerCase().indexOf(query) >= 0
+                })
+            }
+            function selectedProfile() {
+                var values = profiles()
+                for (var index = 0; index < values.length; index++)
+                    if (values[index].name === selectedName) return values[index]
+                return values.length ? values[0] : null
+            }
+            function loadProfile(profile) {
+                if (!profile) return
+                selectedName = profile.name
+                selectedTab = "general"
+                wifiPassword = ""
+                var details = profile.details || ({})
+                interfaceValue = details.interface || ""
+                ssidValue = details.ssid || ""
+                wifiModeValue = details.wifi_mode || "infrastructure"
+                securityValue = details.security || ""
+                passwordValue = ""
+                ipv4MethodValue = details.ipv4_method || "auto"
+                ipv4AddressesValue = details.ipv4_addresses || ""
+                ipv4GatewayValue = details.ipv4_gateway || ""
+                ipv4DnsValue = details.ipv4_dns || ""
+                ipv6MethodValue = details.ipv6_method || "auto"
+                ipv6AddressesValue = details.ipv6_addresses || ""
+                ipv6GatewayValue = details.ipv6_gateway || ""
+                ipv6DnsValue = details.ipv6_dns || ""
+                proxyMethodValue = details.proxy_method || "none"
+                autoconnectValue = details.autoconnect !== false
+            }
+            function saveProfile() {
+                var values = {
+                    interface: interfaceValue, ssid: ssidValue, wifi_mode: wifiModeValue,
+                    security: securityValue, ipv4_method: ipv4MethodValue,
+                    ipv4_addresses: ipv4AddressesValue, ipv4_gateway: ipv4GatewayValue,
+                    ipv4_dns: ipv4DnsValue, ipv6_method: ipv6MethodValue,
+                    ipv6_addresses: ipv6AddressesValue, ipv6_gateway: ipv6GatewayValue,
+                    ipv6_dns: ipv6DnsValue, proxy_method: proxyMethodValue,
+                    autoconnect: autoconnectValue
+                }
+                if (passwordValue !== "") values.password = passwordValue
+                settingsData.networkProfileSave(selectedName, values)
+            }
+            function selectFirst() { if (!selectedName && profiles().length) loadProfile(profiles()[0]) }
+
+            Component.onCompleted: selectFirst()
+
+            Row {
+                anchors.fill: parent
+                spacing: 12
+
+                Rectangle {
+                    width: 290
+                    height: parent.height
+                    color: Qt.alpha(surfaceColor(), 0.72)
+                    radius: 10
+                    border.color: themeData.colors.border || "#3d4355"
+                    border.width: 1
+                    Column {
+                        anchors.fill: parent
+                        anchors.margins: 12
+                        spacing: 10
+                        Text { text: "Network connections"; color: textColor(); font.family: "JetBrains Mono"; font.pixelSize: 12; font.bold: true }
+                        Text { text: "Saved profiles"; color: mutedColor(); font.family: "JetBrains Mono"; font.pixelSize: 10 }
+                        ListView {
+                            id: connectionList
+                            width: parent.width
+                            height: parent.height - 122
+                            clip: true
+                            spacing: 4
+                            model: networkEditor.profiles()
+                            delegate: Rectangle {
+                                required property var modelData
+                                width: connectionList.width
+                                height: 48
+                                radius: 7
+                                color: modelData.name === networkEditor.selectedName ? selectedColor() : "transparent"
+                                Column {
+                                    anchors.left: parent.left; anchors.leftMargin: 10; anchors.verticalCenter: parent.verticalCenter
+                                    width: parent.width - 18
+                                    Text { text: modelData.name; color: textColor(); font.family: "JetBrains Mono"; font.pixelSize: 10; elide: Text.ElideRight; width: parent.width }
+                                    Text { text: (modelData.type || "connection") + (modelData.active ? "  ACTIVE" : ""); color: modelData.active ? (themeData.colors.success || "#9ece6a") : mutedColor(); font.family: "JetBrains Mono"; font.pixelSize: 9 }
+                                }
+                                MouseArea { anchors.fill: parent; onClicked: networkEditor.loadProfile(modelData) }
+                            }
+                        }
+                        Row {
+                            spacing: 6
+                            Button { text: "New"; onClicked: { networkEditor.newName = ""; networkEditor.newSsid = ""; networkEditor.newDialogVisible = true } }
+                            Button { text: "Delete"; enabled: networkEditor.selectedName !== ""; onClicked: settingsData.networkProfileDelete(networkEditor.selectedName) }
+                        }
+                    }
+                }
+
+                Column {
+                    width: parent.width - 302
+                    height: parent.height
+                    spacing: 10
+                    Text { text: "Network"; color: textColor(); font.family: "JetBrains Mono"; font.pixelSize: 13; font.bold: true }
+                    Text { text: "Edit NetworkManager connection profiles."; color: mutedColor(); font.family: "JetBrains Mono"; font.pixelSize: 10 }
+                    Text { visible: settingsData.systemActionStatus !== ""; text: settingsData.systemActionStatus; color: themeData.colors.warning || "#e0af68"; font.family: "JetBrains Mono"; font.pixelSize: 10 }
+
+                    Row {
+                        spacing: 8
+                        Text { text: "Available Wi-Fi"; color: accentColor(); font.family: "JetBrains Mono"; font.pixelSize: 10; anchors.verticalCenter: parent.verticalCenter }
+                        TextField { width: 180; placeholderText: "Search SSIDs"; text: networkEditor.wifiSearch; onTextChanged: networkEditor.wifiSearch = text }
+                        TextField { width: 150; echoMode: TextInput.Password; placeholderText: "Password if needed"; onTextChanged: networkEditor.wifiPassword = text }
+                        Button { text: networkEditor.wifiBrowserVisible ? "Refresh" : "Scan"; onClicked: { networkEditor.wifiBrowserVisible = true; settingsData.scanWifi() } }
+                    }
+                    ListView {
+                        visible: networkEditor.wifiBrowserVisible
+                        width: parent.width
+                        height: Math.min(112, Math.max(34, networkEditor.wifiNetworks().length * 34))
+                        clip: true
+                        model: networkEditor.wifiNetworks()
+                        delegate: Row {
+                            required property var modelData
+                            width: parent.width
+                            height: 32
+                            spacing: 10
+                            Text { width: 210; text: modelData.ssid; color: textColor(); font.family: "JetBrains Mono"; font.pixelSize: 10; elide: Text.ElideRight; anchors.verticalCenter: parent.verticalCenter }
+                            Text { width: 100; text: (modelData.signal || "") + "%  " + (modelData.security || "open"); color: mutedColor(); font.family: "JetBrains Mono"; font.pixelSize: 9; anchors.verticalCenter: parent.verticalCenter }
+                            Button { text: "Connect"; onClicked: settingsData.connectWifi(modelData.ssid, networkEditor.wifiPassword, modelData.device) }
+                        }
+                    }
+
+                    Row {
+                        spacing: 6
+                        Repeater {
+                            model: networkEditor.tabs()
+                            delegate: Button { required property var modelData; text: modelData[1]; highlighted: networkEditor.selectedTab === modelData[0]; onClicked: networkEditor.selectedTab = modelData[0] }
+                        }
+                        Item { width: 1; height: 1 }
+                        Button { text: "Connect"; enabled: networkEditor.selectedName !== ""; onClicked: settingsData.activateNetwork(networkEditor.selectedName) }
+                    }
+
+                    Rectangle {
+                        width: parent.width
+                        height: parent.height - 142
+                        color: Qt.alpha(surfaceColor(), 0.48)
+                        radius: 10
+                        border.color: themeData.colors.border || "#3d4355"
+                        border.width: 1
+                        Flickable {
+                            anchors.fill: parent; anchors.margins: 16; contentWidth: width; contentHeight: editorColumn.height; clip: true
+                            Column {
+                                id: editorColumn
+                                width: parent.width
+                                spacing: 11
+                                visible: networkEditor.selectedName !== ""
+                                Text { text: networkEditor.selectedName || "No connection selected"; color: accentColor(); font.family: "JetBrains Mono"; font.pixelSize: 12; font.bold: true }
+                                Text { visible: networkEditor.selectedTab === "general"; text: "Connection settings"; color: textColor(); font.family: "JetBrains Mono"; font.pixelSize: 11; font.bold: true }
+                                Row {
+                                    visible: networkEditor.selectedTab === "general"; spacing: 10
+                                    Text { text: "Interface"; color: mutedColor(); width: 120; font.family: "JetBrains Mono"; font.pixelSize: 10; anchors.verticalCenter: parent.verticalCenter }
+                                    TextField { width: 300; text: networkEditor.interfaceValue; placeholderText: "Any interface"; onEditingFinished: networkEditor.interfaceValue = text }
+                                }
+                                CheckBox { visible: networkEditor.selectedTab === "general"; text: "Automatically connect"; checked: networkEditor.autoconnectValue; onToggled: networkEditor.autoconnectValue = checked }
+                                Text { visible: networkEditor.selectedTab === "wifi"; text: "Wi-Fi settings"; color: textColor(); font.family: "JetBrains Mono"; font.pixelSize: 11; font.bold: true }
+                                Row {
+                                    visible: networkEditor.selectedTab === "wifi"; spacing: 10
+                                    Text { text: "SSID"; color: mutedColor(); width: 120; font.family: "JetBrains Mono"; font.pixelSize: 10; anchors.verticalCenter: parent.verticalCenter }
+                                    TextField { width: 300; text: networkEditor.ssidValue; onEditingFinished: networkEditor.ssidValue = text }
+                                }
+                                Row {
+                                    visible: networkEditor.selectedTab === "wifi"; spacing: 10
+                                    Text { text: "Mode"; color: mutedColor(); width: 120; font.family: "JetBrains Mono"; font.pixelSize: 10; anchors.verticalCenter: parent.verticalCenter }
+                                    ComboBox { width: 220; model: ["infrastructure", "adhoc", "ap", "mesh"]; currentIndex: Math.max(0, model.indexOf(networkEditor.wifiModeValue)); onActivated: networkEditor.wifiModeValue = currentText }
+                                }
+                                Row {
+                                    visible: networkEditor.selectedTab === "wifi"; spacing: 10
+                                    Text { text: "Security"; color: mutedColor(); width: 120; font.family: "JetBrains Mono"; font.pixelSize: 10; anchors.verticalCenter: parent.verticalCenter }
+                                    ComboBox { width: 220; model: ["", "wpa-psk", "sae", "wpa-eap", "owe"]; currentIndex: Math.max(0, model.indexOf(networkEditor.securityValue)); onActivated: networkEditor.securityValue = currentText }
+                                }
+                                Row {
+                                    visible: networkEditor.selectedTab === "wifi"; spacing: 10
+                                    Text { text: "Password"; color: mutedColor(); width: 120; font.family: "JetBrains Mono"; font.pixelSize: 10; anchors.verticalCenter: parent.verticalCenter }
+                                    TextField { width: 300; echoMode: TextInput.Password; placeholderText: "Leave blank to keep current password"; onEditingFinished: networkEditor.passwordValue = text }
+                                }
+                                Text { visible: networkEditor.selectedTab === "ipv4"; text: "IPv4 settings"; color: textColor(); font.family: "JetBrains Mono"; font.pixelSize: 11; font.bold: true }
+                                Row {
+                                    visible: networkEditor.selectedTab === "ipv4"; spacing: 10
+                                    Text { text: "Method"; color: mutedColor(); width: 120; font.family: "JetBrains Mono"; font.pixelSize: 10; anchors.verticalCenter: parent.verticalCenter }
+                                    ComboBox { width: 220; model: ["auto", "manual", "disabled", "link-local", "shared"]; currentIndex: Math.max(0, model.indexOf(networkEditor.ipv4MethodValue)); onActivated: networkEditor.ipv4MethodValue = currentText }
+                                }
+                                Row {
+                                    visible: networkEditor.selectedTab === "ipv4"; spacing: 10
+                                    Text { text: "Addresses"; color: mutedColor(); width: 120; font.family: "JetBrains Mono"; font.pixelSize: 10; anchors.verticalCenter: parent.verticalCenter }
+                                    TextField { width: 300; text: networkEditor.ipv4AddressesValue; placeholderText: "192.168.1.20/24"; onEditingFinished: networkEditor.ipv4AddressesValue = text }
+                                }
+                                Row {
+                                    visible: networkEditor.selectedTab === "ipv4"; spacing: 10
+                                    Text { text: "Gateway"; color: mutedColor(); width: 120; font.family: "JetBrains Mono"; font.pixelSize: 10; anchors.verticalCenter: parent.verticalCenter }
+                                    TextField { width: 300; text: networkEditor.ipv4GatewayValue; onEditingFinished: networkEditor.ipv4GatewayValue = text }
+                                }
+                                Row {
+                                    visible: networkEditor.selectedTab === "ipv4"; spacing: 10
+                                    Text { text: "DNS"; color: mutedColor(); width: 120; font.family: "JetBrains Mono"; font.pixelSize: 10; anchors.verticalCenter: parent.verticalCenter }
+                                    TextField { width: 300; text: networkEditor.ipv4DnsValue; placeholderText: "1.1.1.1,8.8.8.8"; onEditingFinished: networkEditor.ipv4DnsValue = text }
+                                }
+                                Text { visible: networkEditor.selectedTab === "ipv6"; text: "IPv6 settings"; color: textColor(); font.family: "JetBrains Mono"; font.pixelSize: 11; font.bold: true }
+                                Row {
+                                    visible: networkEditor.selectedTab === "ipv6"; spacing: 10
+                                    Text { text: "Method"; color: mutedColor(); width: 120; font.family: "JetBrains Mono"; font.pixelSize: 10; anchors.verticalCenter: parent.verticalCenter }
+                                    ComboBox { width: 220; model: ["auto", "manual", "disabled", "link-local", "ignore"]; currentIndex: Math.max(0, model.indexOf(networkEditor.ipv6MethodValue)); onActivated: networkEditor.ipv6MethodValue = currentText }
+                                }
+                                Row {
+                                    visible: networkEditor.selectedTab === "ipv6"; spacing: 10
+                                    Text { text: "Addresses"; color: mutedColor(); width: 120; font.family: "JetBrains Mono"; font.pixelSize: 10; anchors.verticalCenter: parent.verticalCenter }
+                                    TextField { width: 300; text: networkEditor.ipv6AddressesValue; onEditingFinished: networkEditor.ipv6AddressesValue = text }
+                                }
+                                Row {
+                                    visible: networkEditor.selectedTab === "ipv6"; spacing: 10
+                                    Text { text: "Gateway"; color: mutedColor(); width: 120; font.family: "JetBrains Mono"; font.pixelSize: 10; anchors.verticalCenter: parent.verticalCenter }
+                                    TextField { width: 300; text: networkEditor.ipv6GatewayValue; onEditingFinished: networkEditor.ipv6GatewayValue = text }
+                                }
+                                Row {
+                                    visible: networkEditor.selectedTab === "ipv6"; spacing: 10
+                                    Text { text: "DNS"; color: mutedColor(); width: 120; font.family: "JetBrains Mono"; font.pixelSize: 10; anchors.verticalCenter: parent.verticalCenter }
+                                    TextField { width: 300; text: networkEditor.ipv6DnsValue; onEditingFinished: networkEditor.ipv6DnsValue = text }
+                                }
+                                Text { visible: networkEditor.selectedTab === "proxy"; text: "Proxy settings"; color: textColor(); font.family: "JetBrains Mono"; font.pixelSize: 11; font.bold: true }
+                                Row {
+                                    visible: networkEditor.selectedTab === "proxy"; spacing: 10
+                                    Text { text: "Method"; color: mutedColor(); width: 120; font.family: "JetBrains Mono"; font.pixelSize: 10; anchors.verticalCenter: parent.verticalCenter }
+                                    ComboBox { width: 220; model: ["none", "auto", "manual"]; currentIndex: Math.max(0, model.indexOf(networkEditor.proxyMethodValue)); onActivated: networkEditor.proxyMethodValue = currentText }
+                                }
+                                Text { visible: networkEditor.selectedName === ""; text: "Create or select a saved connection to edit its settings."; color: mutedColor(); font.family: "JetBrains Mono"; font.pixelSize: 10 }
+                            }
+                        }
+                    }
+                    Row {
+                        spacing: 8
+                        Button { text: "Save"; enabled: networkEditor.selectedName !== ""; onClicked: networkEditor.saveProfile() }
+                        Button { text: "Disconnect"; enabled: networkEditor.selectedName !== ""; onClicked: settingsData.deactivateNetwork(networkEditor.selectedName) }
+                    }
+                }
+            }
+
+            Rectangle {
+                visible: networkEditor.newDialogVisible
+                anchors.fill: parent
+                z: 20
+                color: Qt.alpha("#000000", 0.68)
+                MouseArea { anchors.fill: parent }
+                Rectangle {
+                    anchors.centerIn: parent
+                    width: 460; height: 270; radius: 12
+                    color: surfaceColor(); border.color: accentColor(); border.width: 1
+                    Column {
+                        anchors.fill: parent; anchors.margins: 20; spacing: 12
+                        Text { text: "New connection"; color: textColor(); font.family: "JetBrains Mono"; font.pixelSize: 14; font.bold: true }
+                        ComboBox { width: 220; model: ["wifi", "ethernet"]; currentIndex: 0; onActivated: networkEditor.newType = currentText }
+                        TextField { width: parent.width; placeholderText: "Connection name"; onTextChanged: networkEditor.newName = text }
+                        TextField { visible: networkEditor.newType === "wifi"; width: parent.width; placeholderText: "Wi-Fi SSID"; onTextChanged: networkEditor.newSsid = text }
+                        Row {
+                            spacing: 10
+                            Button { text: "Cancel"; onClicked: networkEditor.newDialogVisible = false }
+                            Button { text: "Create"; enabled: networkEditor.newName !== "" && (networkEditor.newType !== "wifi" || networkEditor.newSsid !== ""); onClicked: { settingsData.networkProfileAdd(networkEditor.newName, networkEditor.newType, networkEditor.newSsid); networkEditor.newDialogVisible = false } }
+                        }
+                    }
+                }
+            }
         }
     }
 
     Component {
         id: bluetoothPage
-        Column {
-            spacing: 14
-            Text { text: "Bluetooth device"; color: textColor(); font.family: "JetBrains Mono"; font.pixelSize: 13; font.bold: true }
-            ComboBox {
-                id: bluetoothDevice
-                width: Math.min(parent.width, 520)
-                model: settingsData.draft.system && settingsData.draft.system.bluetooth ? settingsData.draft.system.bluetooth.devices.map(function(item) { return item.name }) : []
+        Item {
+            id: bluetoothEditor
+            property var bluetooth: settingsData.draft.system && settingsData.draft.system.bluetooth ? settingsData.draft.system.bluetooth : ({ adapter: {}, devices: [] })
+            property string selectedAddress: ""
+            property string search: ""
+
+            function devices() {
+                var query = search.toLowerCase()
+                return (bluetooth.devices || []).filter(function(item) {
+                    var label = (item.alias || item.name || item.address).toLowerCase()
+                    return !query || label.indexOf(query) >= 0 || item.address.toLowerCase().indexOf(query) >= 0
+                })
             }
-            CheckBox {
-                text: "Connect selected device"
-                enabled: bluetoothDevice.count > 0
-                onToggled: {
-                    var device = settingsData.draft.system.bluetooth.devices[bluetoothDevice.currentIndex]
-                    if (device) settingsData.setBluetoothDevice(device.address, checked)
+            function selectedDevice() {
+                var values = bluetooth.devices || []
+                for (var index = 0; index < values.length; index++)
+                    if (values[index].address === selectedAddress) return values[index]
+                return values.length ? values[0] : null
+            }
+            function selectFirst() {
+                var device = selectedDevice()
+                if (device && !selectedAddress) selectedAddress = device.address
+            }
+            onBluetoothChanged: selectFirst()
+            Component.onCompleted: selectFirst()
+
+            Column {
+                anchors.fill: parent
+                spacing: 10
+                Text { text: "Bluetooth"; color: textColor(); font.family: "JetBrains Mono"; font.pixelSize: 13; font.bold: true }
+                Text { text: "Manage adapters, paired devices, and nearby Bluetooth hardware."; color: mutedColor(); font.family: "JetBrains Mono"; font.pixelSize: 10 }
+                Text { visible: settingsData.systemActionStatus !== ""; text: settingsData.systemActionStatus; color: themeData.colors.warning || "#e0af68"; font.family: "JetBrains Mono"; font.pixelSize: 10 }
+
+                Rectangle {
+                    width: parent.width
+                    height: 58
+                    color: Qt.alpha(surfaceColor(), 0.72)
+                    radius: 9
+                    Row {
+                        anchors.fill: parent; anchors.margins: 10; spacing: 12
+                        CheckBox { text: "Enabled"; checked: bluetoothEditor.bluetooth.adapter && bluetoothEditor.bluetooth.adapter.powered === true; onToggled: settingsData.setBluetoothPower(checked) }
+                        CheckBox { text: "Discovering"; enabled: bluetoothEditor.bluetooth.adapter && bluetoothEditor.bluetooth.adapter.powered === true; checked: bluetoothEditor.bluetooth.adapter && bluetoothEditor.bluetooth.adapter.discovering === true; onToggled: settingsData.setBluetoothScanning(checked) }
+                        CheckBox { text: "Pairable"; enabled: bluetoothEditor.bluetooth.adapter && bluetoothEditor.bluetooth.adapter.powered === true; checked: bluetoothEditor.bluetooth.adapter && bluetoothEditor.bluetooth.adapter.pairable === true; onToggled: settingsData.setBluetoothPairable(checked) }
+                        CheckBox { text: "Discoverable"; enabled: bluetoothEditor.bluetooth.adapter && bluetoothEditor.bluetooth.adapter.powered === true; checked: bluetoothEditor.bluetooth.adapter && bluetoothEditor.bluetooth.adapter.discoverable === true; onToggled: settingsData.setBluetoothDiscoverable(checked) }
+                    }
+                }
+
+                Row {
+                    width: parent.width
+                    height: parent.height - 150
+                    spacing: 12
+                    Rectangle {
+                        width: 300; height: parent.height
+                        color: Qt.alpha(surfaceColor(), 0.72); radius: 10
+                        border.color: themeData.colors.border || "#3d4355"; border.width: 1
+                        Column {
+                            anchors.fill: parent; anchors.margins: 12; spacing: 10
+                            Text { text: "Devices"; color: accentColor(); font.family: "JetBrains Mono"; font.pixelSize: 11; font.bold: true }
+                            TextField { width: parent.width; placeholderText: "Search devices"; text: bluetoothEditor.search; onTextChanged: bluetoothEditor.search = text }
+                            ListView {
+                                id: bluetoothList
+                                width: parent.width; height: parent.height - 70; clip: true; spacing: 4
+                                model: bluetoothEditor.devices()
+                                delegate: Rectangle {
+                                    required property var modelData
+                                    width: bluetoothList.width; height: 52; radius: 7
+                                    color: modelData.address === bluetoothEditor.selectedAddress ? selectedColor() : "transparent"
+                                    Column {
+                                        anchors.left: parent.left; anchors.leftMargin: 10; anchors.verticalCenter: parent.verticalCenter
+                                        width: parent.width - 18
+                                        Text { text: modelData.alias || modelData.name || modelData.address; color: textColor(); font.family: "JetBrains Mono"; font.pixelSize: 10; elide: Text.ElideRight; width: parent.width }
+                                        Text { text: (modelData.connected ? "CONNECTED" : (modelData.paired ? "PAIRED" : "AVAILABLE")) + (modelData.rssi !== undefined ? "  " + modelData.rssi + " dBm" : ""); color: modelData.connected ? (themeData.colors.success || "#9ece6a") : mutedColor(); font.family: "JetBrains Mono"; font.pixelSize: 9 }
+                                    }
+                                    MouseArea { anchors.fill: parent; onClicked: bluetoothEditor.selectedAddress = modelData.address }
+                                }
+                            }
+                        }
+                    }
+
+                    Rectangle {
+                        width: parent.width - 312; height: parent.height
+                        color: Qt.alpha(surfaceColor(), 0.48); radius: 10
+                        border.color: themeData.colors.border || "#3d4355"; border.width: 1
+                        Flickable {
+                            anchors.fill: parent; anchors.margins: 16; contentWidth: width; contentHeight: bluetoothDetails.height; clip: true
+                            Column {
+                                id: bluetoothDetails
+                                width: parent.width; spacing: 12
+                                property var device: bluetoothEditor.selectedDevice() || ({})
+                                Text { text: bluetoothDetails.device.alias || bluetoothDetails.device.name || "No device selected"; color: textColor(); font.family: "JetBrains Mono"; font.pixelSize: 14; font.bold: true }
+                                Text { text: bluetoothDetails.device.address || "Scan for nearby devices to begin."; color: mutedColor(); font.family: "JetBrains Mono"; font.pixelSize: 10 }
+                                Text { visible: bluetoothDetails.device.icon !== undefined; text: "Type: " + (bluetoothDetails.device.icon || "unknown"); color: mutedColor(); font.family: "JetBrains Mono"; font.pixelSize: 10 }
+                                Text { visible: bluetoothDetails.device.battery !== undefined; text: "Battery: " + bluetoothDetails.device.battery + "%"; color: textColor(); font.family: "JetBrains Mono"; font.pixelSize: 10 }
+                                Text { visible: bluetoothDetails.device.rssi !== undefined; text: "Signal: " + bluetoothDetails.device.rssi + " dBm"; color: mutedColor(); font.family: "JetBrains Mono"; font.pixelSize: 10 }
+                                Row {
+                                    spacing: 8
+                                    Button { text: bluetoothDetails.device.connected ? "Disconnect" : "Connect"; enabled: bluetoothDetails.device.address !== undefined; onClicked: bluetoothDetails.device.connected ? settingsData.disconnectBluetooth(bluetoothDetails.device.address) : settingsData.connectBluetooth(bluetoothDetails.device.address) }
+                                    Button { text: bluetoothDetails.device.paired ? "Paired" : "Pair"; enabled: !bluetoothDetails.device.paired && bluetoothDetails.device.address !== undefined; onClicked: settingsData.pairBluetooth(bluetoothDetails.device.address) }
+                                }
+                                Row {
+                                    spacing: 8
+                                    CheckBox { text: "Trusted"; enabled: bluetoothDetails.device.paired === true; checked: bluetoothDetails.device.trusted === true; onToggled: settingsData.trustBluetooth(bluetoothDetails.device.address, checked) }
+                                    CheckBox { text: "Blocked"; enabled: bluetoothDetails.device.address !== undefined; checked: bluetoothDetails.device.blocked === true; onToggled: settingsData.blockBluetooth(bluetoothDetails.device.address, checked) }
+                                }
+                                Row {
+                                    spacing: 8
+                                    Button { text: "Remove device"; enabled: bluetoothDetails.device.paired === true || bluetoothDetails.device.blocked === true; onClicked: settingsData.removeBluetooth(bluetoothDetails.device.address) }
+                                }
+                                Text { visible: !settingsData.capabilities.bluetoothctl; text: "bluetoothctl is not available in this session."; color: themeData.colors.warning || "#e0af68"; font.family: "JetBrains Mono"; font.pixelSize: 10 }
+                            }
+                        }
+                    }
                 }
             }
-            Text { text: settingsData.capabilities.bluetoothctl ? "Bluetooth changes are applied through bluetoothctl." : "bluetoothctl is not available in this session."; color: mutedColor(); font.family: "JetBrains Mono"; font.pixelSize: 10; wrapMode: Text.WordWrap; width: parent.width }
         }
     }
 
     Component {
         id: powerPage
-        Column {
-            spacing: 14
-            Text { text: "Power profile"; color: textColor(); font.family: "JetBrains Mono"; font.pixelSize: 13; font.bold: true }
-            ComboBox {
-                width: Math.min(parent.width, 360)
-                model: settingsData.draft.system && settingsData.draft.system.power ? settingsData.draft.system.power.profiles : []
-                onActivated: settingsData.setPowerProfile(currentText)
+        Flickable {
+            contentWidth: width
+            contentHeight: powerColumn.height
+            clip: true
+            Item {
+                id: powerEditor
+                width: parent.width
+                height: powerColumn.height
+                property var power: settingsData.draft.system && settingsData.draft.system.power ? settingsData.draft.system.power : ({})
+                property var idle: power.hypridle || ({ enabled: true, lock_timeout: 180, suspend_timeout: 300 })
+                property bool idleEnabled: true
+                property int lockTimeout: 180
+                property int suspendTimeout: 300
+                property string lockAction: "loginctl lock-session"
+                property string suspendAction: "systemctl suspend"
+
+                function syncIdle() {
+                    idleEnabled = idle.enabled !== false
+                    lockTimeout = Number(idle.lock_timeout || 0)
+                    suspendTimeout = Number(idle.suspend_timeout || 0)
+                    lockAction = idle.lock_action || "loginctl lock-session"
+                    suspendAction = idle.suspend_action || "systemctl suspend"
+                }
+                onPowerChanged: syncIdle()
+                Component.onCompleted: syncIdle()
+
+                Column {
+                    id: powerColumn
+                    width: parent.width
+                    spacing: 14
+                    Text { text: "Power"; color: textColor(); font.family: "JetBrains Mono"; font.pixelSize: 13; font.bold: true }
+                    Text { text: "TuneD performance profiles and Hypridle session behavior."; color: mutedColor(); font.family: "JetBrains Mono"; font.pixelSize: 10; wrapMode: Text.WordWrap; width: parent.width }
+                    Text { visible: settingsData.systemActionStatus !== ""; text: settingsData.systemActionStatus; color: themeData.colors.warning || "#e0af68"; font.family: "JetBrains Mono"; font.pixelSize: 10 }
+
+                    Rectangle {
+                        width: parent.width
+                        height: tunedColumn.height + 24
+                        color: Qt.alpha(surfaceColor(), 0.72)
+                        radius: 10
+                        border.color: themeData.colors.border || "#3d4355"
+                        border.width: 1
+                        Column {
+                            id: tunedColumn
+                            anchors.left: parent.left; anchors.right: parent.right; anchors.top: parent.top; anchors.margins: 12
+                            spacing: 10
+                            Text { text: "System performance profile"; color: accentColor(); font.family: "JetBrains Mono"; font.pixelSize: 11; font.bold: true }
+                            Row {
+                                spacing: 10
+                                Text { text: powerEditor.power.backend === "tuned" ? "TuneD profile" : "Power profile"; color: mutedColor(); width: 120; font.family: "JetBrains Mono"; font.pixelSize: 10; anchors.verticalCenter: parent.verticalCenter }
+                                ComboBox {
+                                    width: 300
+                                    model: powerEditor.power.profiles || []
+                                    currentIndex: Math.max(0, model.indexOf(powerEditor.power.profile || ""))
+                                    enabled: powerEditor.power.backend === "tuned" && settingsData.capabilities["tuned-adm"]
+                                    onActivated: settingsData.setTunedProfile(currentText)
+                                }
+                            }
+                            Text { text: powerEditor.power.backend === "tuned" ? "TuneD is managing the active system profile." : "TuneD is unavailable; install a compatible power profile backend."; color: mutedColor(); font.family: "JetBrains Mono"; font.pixelSize: 10; wrapMode: Text.WordWrap; width: parent.width }
+                        }
+                    }
+
+                    Rectangle {
+                        width: parent.width
+                        height: idleColumn.height + 24
+                        color: Qt.alpha(surfaceColor(), 0.72)
+                        radius: 10
+                        border.color: themeData.colors.border || "#3d4355"
+                        border.width: 1
+                        Column {
+                            id: idleColumn
+                            anchors.left: parent.left; anchors.right: parent.right; anchors.top: parent.top; anchors.margins: 12
+                            spacing: 10
+                            Text { text: "Lock and idle"; color: accentColor(); font.family: "JetBrains Mono"; font.pixelSize: 11; font.bold: true }
+                            CheckBox { text: "Enable Hypridle"; checked: powerEditor.idleEnabled; onToggled: powerEditor.idleEnabled = checked }
+                            Row {
+                                spacing: 10
+                                Text { text: "Lock after"; color: mutedColor(); width: 120; font.family: "JetBrains Mono"; font.pixelSize: 10; anchors.verticalCenter: parent.verticalCenter }
+                                SpinBox { from: 0; to: 7200; stepSize: 30; value: powerEditor.lockTimeout; enabled: powerEditor.idleEnabled; onValueModified: powerEditor.lockTimeout = value }
+                                Text { text: powerEditor.lockTimeout === 0 ? "disabled" : powerEditor.lockTimeout + " seconds"; color: mutedColor(); font.family: "JetBrains Mono"; font.pixelSize: 10; anchors.verticalCenter: parent.verticalCenter }
+                            }
+                            Row {
+                                spacing: 10
+                                Text { text: "Suspend after"; color: mutedColor(); width: 120; font.family: "JetBrains Mono"; font.pixelSize: 10; anchors.verticalCenter: parent.verticalCenter }
+                                SpinBox { from: 0; to: 14400; stepSize: 30; value: powerEditor.suspendTimeout; enabled: powerEditor.idleEnabled; onValueModified: powerEditor.suspendTimeout = value }
+                                Text { text: powerEditor.suspendTimeout === 0 ? "disabled" : powerEditor.suspendTimeout + " seconds"; color: mutedColor(); font.family: "JetBrains Mono"; font.pixelSize: 10; anchors.verticalCenter: parent.verticalCenter }
+                            }
+                            Row {
+                                spacing: 10
+                                Text { text: "Lock command"; color: mutedColor(); width: 120; font.family: "JetBrains Mono"; font.pixelSize: 10; anchors.verticalCenter: parent.verticalCenter }
+                                TextField { width: 360; text: powerEditor.lockAction; onEditingFinished: powerEditor.lockAction = text }
+                            }
+                            Row {
+                                spacing: 10
+                                Text { text: "Suspend command"; color: mutedColor(); width: 120; font.family: "JetBrains Mono"; font.pixelSize: 10; anchors.verticalCenter: parent.verticalCenter }
+                                TextField { width: 360; text: powerEditor.suspendAction; onEditingFinished: powerEditor.suspendAction = text }
+                            }
+                            Button { text: "Stage Hypridle settings"; onClicked: settingsData.saveHypridle({ enabled: powerEditor.idleEnabled, lock_timeout: powerEditor.lockTimeout, suspend_timeout: powerEditor.suspendTimeout, lock_action: powerEditor.lockAction, suspend_action: powerEditor.suspendAction }) }
+                            Text { text: "Changes remain staged until the global Apply button is pressed."; color: mutedColor(); font.family: "JetBrains Mono"; font.pixelSize: 10; wrapMode: Text.WordWrap; width: parent.width }
+                            Text { text: settingsData.capabilities.hypridle ? "Changes restart the user Hypridle service." : "hypridle is not available in this session."; color: settingsData.capabilities.hypridle ? mutedColor() : (themeData.colors.warning || "#e0af68"); font.family: "JetBrains Mono"; font.pixelSize: 10; wrapMode: Text.WordWrap; width: parent.width }
+                        }
+                    }
+                }
             }
-            Text { text: settingsData.capabilities.powerprofilesctl ? "The selected profile is applied through power-profiles-daemon." : "powerprofilesctl is not installed; other power controls are not yet available."; color: mutedColor(); font.family: "JetBrains Mono"; font.pixelSize: 10; wrapMode: Text.WordWrap; width: parent.width }
         }
     }
 
@@ -1027,6 +2015,22 @@ Window {
                 width: moduleLoader.width
                 spacing: 12
                 Text { text: "Orbit status"; color: textColor(); font.family: "JetBrains Mono"; font.pixelSize: 13; font.bold: true }
+                Row {
+                    spacing: 10
+                    Orbit.OrbitButton {
+                        themeData: root.themeData
+                        text: "Reload Orbit"
+                        highlighted: true
+                        onClicked: settingsData.reloadOrbit()
+                    }
+                    Text {
+                        text: "Restarts the Orbit shell without changing Noctalia or system settings."
+                        color: mutedColor()
+                        font.family: themeData.uiFont
+                        font.pixelSize: 11
+                        anchors.verticalCenter: parent.verticalCenter
+                    }
+                }
                 Text { text: "Monitors: " + settingsData.monitors.length; color: textColor(); font.family: "JetBrains Mono"; font.pixelSize: 11 }
                 Repeater {
                     model: settingsData.monitors
@@ -1036,7 +2040,7 @@ Window {
                         color: mutedColor(); font.family: "JetBrains Mono"; font.pixelSize: 10; elide: Text.ElideRight; width: diagnosticsColumn.width
                     }
                 }
-                Text { text: "System backends"; color: textColor(); font.family: "JetBrains Mono"; font.pixelSize: 13; font.bold: true; topPadding: 10 }
+                Text { text: "System backends"; color: textColor(); font.family: "JetBrains Mono"; font.pixelSize: 13; font.bold: true }
                 Repeater {
                     model: Object.keys(settingsData.capabilities)
                     delegate: Text {

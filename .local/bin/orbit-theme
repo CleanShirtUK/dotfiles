@@ -16,6 +16,9 @@ ORBIT = Path.home() / ".config/orbit"
 SETTINGS = ORBIT / "settings.toml"
 PALETTES = ORBIT / "palettes"
 GENERATED = ORBIT / "generated"
+GTK3_ACTIVE = Path.home() / ".config/gtk-3.0/noctalia.css"
+GTK4_ACTIVE = Path.home() / ".config/gtk-4.0/noctalia.css"
+KDE_SCHEME_ACTIVE = Path.home() / ".local/share/color-schemes/noctalia.colors"
 HEX = re.compile(r"^#[0-9a-fA-F]{6}$")
 
 
@@ -137,7 +140,12 @@ def gtk_css(values: dict, headerbar: str) -> str:
         f"    --surface-elevated-color: {values['surface_elevated']};",
         f"    --text-muted-color: {values['text_muted']};",
         f"    --error-color: {values['error']};",
+        f"    --warning-color: {values['warning']};",
+        f"    --warning-bg-color: {values['accent_deep']};",
+        f"    --warning-fg-color: {values['text']};",
         f"    --success-color: {values['success']};",
+        f"    --success-bg-color: {values['accent_deep']};",
+        f"    --success-fg-color: {values['text']};",
         "}",
         "",
     ]
@@ -282,6 +290,129 @@ def generate(name: str) -> Path:
     return output
 
 
+def kde_scheme(values: dict) -> str:
+    def rgb(value: str) -> str:
+        return ",".join(str(int(value[index:index + 2], 16)) for index in (1, 3, 5))
+
+    background = rgb(values["window_background"])
+    surface = rgb(values["surface"])
+    elevated = rgb(values["surface_elevated"])
+    accent = rgb(values["accent"])
+    text = rgb(values["text"])
+    muted = rgb(values["text_muted"])
+    error = rgb(values["error"])
+    success = rgb(values["success"])
+    secondary = rgb(values["accent_secondary"])
+    selected_text = rgb(values["accent_foreground"])
+    return f'''[KDE]
+contrast=4
+
+[General]
+ColorScheme=Noctalia
+Name=noctalia
+
+[Colors:Button]
+BackgroundAlternate={rgb(values["background_deep"])}
+BackgroundNormal={surface}
+DecorationFocus={accent}
+DecorationHover={accent}
+ForegroundActive={accent}
+ForegroundInactive={muted}
+ForegroundLink={secondary}
+ForegroundNegative={error}
+ForegroundNeutral={success}
+ForegroundNormal={text}
+ForegroundPositive={success}
+ForegroundVisited={secondary}
+
+[Colors:Complementary]
+BackgroundAlternate={rgb(values["editor"])}
+BackgroundNormal={background}
+DecorationFocus={accent}
+DecorationHover={accent}
+ForegroundActive={accent}
+ForegroundInactive={muted}
+ForegroundLink={secondary}
+ForegroundNegative={error}
+ForegroundNeutral={success}
+ForegroundNormal={text}
+ForegroundPositive={success}
+ForegroundVisited={secondary}
+
+[Colors:Header]
+BackgroundAlternate={background}
+BackgroundNormal={surface}
+DecorationFocus={accent}
+DecorationHover={accent}
+ForegroundActive={accent}
+ForegroundInactive={muted}
+ForegroundLink={secondary}
+ForegroundNegative={error}
+ForegroundNeutral={success}
+ForegroundNormal={text}
+ForegroundPositive={success}
+ForegroundVisited={secondary}
+
+[Colors:Selection]
+BackgroundAlternate={rgb(values["background_deep"])}
+BackgroundNormal={accent}
+DecorationFocus={accent}
+DecorationHover={accent}
+ForegroundActive={selected_text}
+ForegroundInactive={muted}
+ForegroundLink={secondary}
+ForegroundNegative={error}
+ForegroundNeutral={success}
+ForegroundNormal={selected_text}
+ForegroundPositive={success}
+ForegroundVisited={secondary}
+
+[Colors:View]
+BackgroundAlternate={surface}
+BackgroundNormal={background}
+DecorationFocus={rgb(values["border_strong"])}
+DecorationHover={selected_text}
+ForegroundActive={accent}
+ForegroundInactive={muted}
+ForegroundLink={secondary}
+ForegroundNegative={error}
+ForegroundNeutral={success}
+ForegroundNormal={text}
+ForegroundPositive={success}
+ForegroundVisited={secondary}
+
+[Colors:Window]
+BackgroundAlternate={background}
+BackgroundNormal={surface}
+DecorationFocus={accent}
+DecorationHover={accent}
+ForegroundActive={accent}
+ForegroundInactive={muted}
+ForegroundLink={secondary}
+ForegroundNegative={error}
+ForegroundNeutral={success}
+ForegroundNormal={text}
+ForegroundPositive={success}
+ForegroundVisited={secondary}
+
+[WM]
+activeBackground={accent}
+activeBlend={text}
+activeForeground={text}
+inactiveBackground={background}
+inactiveBlend={muted}
+inactiveForeground={muted}
+'''
+
+
+def install_active_adapters(palette_name: str) -> None:
+    generated = GENERATED / palette_name
+    write_atomic(GTK3_ACTIVE, (generated / "gtk-3.0.css").read_text())
+    write_atomic(GTK4_ACTIVE, (generated / "gtk-4.0.css").read_text())
+    semantic_values = json.loads((generated / "semantic.json").read_text())["semantic"]
+    write_atomic(KDE_SCHEME_ACTIVE, kde_scheme(semantic_values))
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(prog="orbit-theme")
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -312,6 +443,7 @@ def main() -> None:
             settings_text = re.sub(r'(?m)^palette\s*=\s*"[^"]+"$', f'palette = "{palette.stem}"', settings_text)
         write_atomic(SETTINGS, settings_text)
         generate(palette.stem)
+        install_active_adapters(palette.stem)
 
 
 if __name__ == "__main__":

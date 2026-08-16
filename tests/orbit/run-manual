@@ -1,0 +1,208 @@
+#!/usr/bin/env bash
+set -u -o pipefail
+
+# Attended validation runner for the manual portion of the Orbit migration.
+# It never changes display, audio, network, Bluetooth, or theme state without
+# displaying the command and asking the operator to run it first.
+
+ROOT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)"
+RUN_ID="$(date -u +%Y-%m-%dT%H-%M-%SZ)-$$"
+STATE_ROOT="${XDG_STATE_HOME:-$HOME/.local/state}/orbit/tests"
+LOG_DIR="${ORBIT_MANUAL_LOG_DIR:-$STATE_ROOT/manual-$RUN_ID}"
+RESULTS="$LOG_DIR/results.tsv"
+COMMAND_LOG="$LOG_DIR/commands.log"
+
+mkdir -p "$LOG_DIR"
+printf 'id\tstatus\tnotes\n' > "$RESULTS"
+: > "$COMMAND_LOG"
+
+if [[ "${1:-}" == "--help" ]]; then
+    printf 'Usage: %s\n' "$0"
+    printf 'Runs deterministic checks and interactively walks Orbit manual tests.\n'
+    printf 'Logs: %s\n' "$LOG_DIR"
+    exit 0
+elif [[ $# -gt 0 ]]; then
+    printf 'Unknown option: %s\n' "$1" >&2
+    exit 2
+fi
+
+if [[ ! -t 0 || ! -t 1 ]]; then
+    printf 'This runner requires an interactive terminal.\n' >&2
+    exit 2
+fi
+
+run_and_show() {
+    local label="$1" command="$2" output status
+    printf '\n[%s]\n$ %s\n' "$label" "$command"
+    printf '[command output]\n' >> "$COMMAND_LOG"
+    printf '$ %s\n' "$command" | tee -a "$COMMAND_LOG"
+    output="$(bash -c "$command" 2>&1)"
+    status=$?
+    if [[ -n "$output" ]]; then
+        printf '%s\n' "$output" | tee -a "$COMMAND_LOG"
+    else
+        printf '(no output)\n' | tee -a "$COMMAND_LOG"
+    fi
+    printf '[exit %s]\n' "$status" | tee -a "$COMMAND_LOG"
+    return "$status"
+}
+
+ask_yes_no() {
+    local answer
+    while true; do
+        read -r -p "$1 [y/N] " answer || exit 2
+        case "${answer,,}" in
+            y|yes) return 0 ;;
+            n|no|'') return 1 ;;
+        esac
+    done
+}
+
+record() {
+    local id="$1" status="$2" notes="$3"
+    notes="${notes//$'\t'/ }"
+    notes="${notes//$'\n'/ }"
+    printf '%s\t%s\t%s\n' "$id" "$status" "$notes" >> "$RESULTS"
+}
+
+ask_result() {
+    local id="$1" notes status
+    while true; do
+        read -r -p "Result for $id: [p]ass [f]ail [b]locked [s]kip [q]uit: " status || exit 2
+        case "${status,,}" in
+            p|pass) status=PASS; break ;;
+            f|fail) status=FAIL; break ;;
+            b|blocked) status=BLOCKED; break ;;
+            s|skip) status=SKIP; break ;;
+            q|quit) printf 'Stopped. Partial results: %s\n' "$RESULTS"; exit 3 ;;
+        esac
+    done
+    read -r -p "Notes for $id (optional): " notes || exit 2
+    record "$id" "$status" "$notes"
+}
+
+manual_test() {
+    local id="$1" title="$2" command="$3" expected="$4" mode="${5:-manual}"
+    printf '\n============================================================\n'
+    printf '%s: %s\n' "$id" "$title"
+    printf '\nCommand(s) to run:\n%s\n\nExpected behaviour to confirm:\n%s\n' "$command" "$expected"
+    if [[ "$mode" == blocked ]]; then
+        printf '\nThis test is currently documented as BLOCKED. Do not work around the blocker.\n'
+        record "$id" BLOCKED "Documented blocker"
+        return
+    fi
+    if [[ "$mode" == known-fail ]]; then
+        printf '\nKnown defect: this is expected to fail until the documented bug is fixed.\n'
+    fi
+    if [[ "$mode" == auto ]]; then
+        run_and_show "$id" "$command" || true
+    elif [[ "$mode" == run ]]; then
+        if ask_yes_no "Run this command now?"; then
+            run_and_show "$id" "$command" || true
+        else
+            printf 'Command not run. Perform it in the attended session before recording the result.\n'
+        fi
+    else
+        printf 'Run the command above in the attended session, then observe the result.\n'
+    fi
+    ask_result "$id"
+}
+
+printf 'Orbit manual validation\nRun: %s\nLogs: %s\n' "$RUN_ID" "$LOG_DIR"
+printf 'Safety: commands that mutate the desktop are never run without confirmation.\n'
+printf 'Use BLOCKED only when the stated fixture or recovery path genuinely does not exist.\n'
+
+printf '\n== Automated baseline ==\n'
+run_and_show 'BASELINE-CONTRACT' "cd '$ROOT_DIR' && tests/orbit/run-all" || true
+run_and_show 'BASELINE-LIVE' "cd '$ROOT_DIR' && tests/orbit/run-all --live" || true
+
+printf '\n== Session baseline ==\n'
+run_and_show 'SESSION-MONITORS' 'hyprctl monitors -j | jq .'
+run_and_show 'SESSION-WORKSPACES' 'hyprctl workspaces -j | jq .'
+run_and_show 'SESSION-CLIENTS' 'hyprctl clients -j | jq .'
+run_and_show 'SESSION-ROLES' 'printf "home="; orbit-monitor resolve home; printf "gaming="; orbit-monitor resolve gaming'
+run_and_show 'SESSION-SERVICES' 'systemctl --user --no-pager --plain is-active orbit-shell.service orbit-input-state.service'
+
+manual_test MON-002 'Reordered connector role resolution' \
+    'orbit-monitor list; hyprctl monitors -j | jq -r ".[] | [.name,.make,.model,.serial,.focused] | @tsv"' \
+    'After swapping monitor positions or connectors in a disposable/attended session, Home and Gaming remain attached to the same physical displays by stable identity, not connector order.'
+manual_test MON-003 'Disconnect and reconnect role fallback' \
+    'hyprctl monitors -j | jq .; orbit-monitor resolve gaming; orbit-monitor resolve home; hyprctl monitors -j | jq .' \
+    'With the configured Gaming display disconnected, Orbit reports a deliberate Gaming-to-Home fallback without errors; after reconnect, the Gaming role resolves back to the correct display.'
+manual_test MON-004 'Wallpaper survives reconnect on every enabled monitor' \
+    'hyprctl monitors -j | jq -r ".[] | [.name,.focused] | @tsv"; systemctl --user --no-pager --full status wallpaper-session-effects.service' \
+    'After disconnecting and reconnecting each enabled monitor, wallpaper is present on every monitor, with no stale or blank output.'
+manual_test MON-005 'Disable and re-enable active monitor recovery' \
+    'hyprctl monitors -j | jq .; hyprctl activeworkspace -j | jq .; hyprctl monitors -j | jq -r ".[].name"' \
+    'In a disposable session, disabling the active monitor moves focus and windows safely; re-enabling it restores valid monitor/workspace state without orphaned surfaces.'
+manual_test MON-006 'Adaptive Sync persistence and runtime behavior' \
+    'hyprctl monitors -j | jq -r ".[] | [.name,.vrr,.refreshRate] | @tsv"; grep -R "vrr\|adaptive" -n "$HOME/.config/orbit" "$HOME/.config/hypr" 2>/dev/null || true' \
+    'On compatible hardware, Adaptive Sync can be enabled, remains enabled after the intended reload/restart, and does not introduce visible flicker, tearing, or instability.'
+
+manual_test APP-002 'Steam routes to Gaming and a dedicated workspace' \
+    'steam; sleep 5; hyprctl clients -j | jq -r '\''.[] | select((.class // "")|test("steam";"i")) | [.class,.title,.monitor,.workspace.name,.floating] | @tsv'\''' \
+    'Steam opens on the resolved Gaming monitor and receives a dedicated workspace, falling back to Home only when Gaming is unavailable.' run
+manual_test APP-003 'Game child windows remain with the game' \
+    'hyprctl clients -j | jq -r ".[] | [.class,.title,.pid,.monitor,.workspace.name] | @tsv"' \
+    'Launch a controlled game fixture from Steam. The game and its child windows remain on the game workspace and Gaming monitor; Steam itself is excluded from the child inheritance path.'
+manual_test APP-004 'Launcher or emulator dedicated child workspace' \
+    'hyprctl clients -j | jq -r ".[] | [.class,.title,.pid,.monitor,.workspace.name] | @tsv"' \
+    'Launch an installed launcher/emulator fixture and its child. The parent gets a dedicated workspace and the child remains with that parent.'
+manual_test APP-005 'Keyring prompt stays with initiating application' \
+    'gcr-prompter --version 2>/dev/null || true; hyprctl clients -j | jq -r ".[] | [.class,.title,.monitor,.workspace.name] | @tsv"' \
+    'A reproducible locked-keyring prompt remains on the initiating application workspace and monitor.' blocked
+manual_test APP-006 'Steam toasts remain with Steam workspace and monitor' \
+    'hyprctl clients -j | jq -r '\''.[] | select((.class // "")|test("steam";"i")) | [.class,.title,.monitor,.workspace.name,.floating] | @tsv'\''' \
+    'Trigger a Steam toast and confirm it appears on Steam workspace and Gaming monitor. The progress document records this as a known wrong-monitor defect.' known-fail
+
+manual_test UI-001 'Dock appears independently on every monitor' \
+    'hyprctl monitors -j | jq -r ".[] | [.name,.focused] | @tsv"; pgrep -af "quickshell.*orbit" || true' \
+    'Every connected monitor has one visible dock; focusing or changing workspace on one monitor does not remove the dock from another.'
+manual_test UI-002 'XMB is focused-monitor-only and workspace-free' \
+    'orbit-xmb open; sleep 1; hyprctl clients -j | jq -r '\''.[] | select(.class == "org.quickshell") | [.class,.title,.monitor,.workspace.name,.layer] | @tsv'\''; orbit-xmb close' \
+    'Opening XMB shows it only on the focused monitor, it is a layer-shell overlay, and it does not own or create a workspace.' run
+manual_test UI-003 'XMB and dock animations with two monitors' \
+    'orbit-xmb toggle; sleep 1; orbit-xmb toggle; hyprctl monitors -j | jq -r ".[] | .name"' \
+    'With two monitors, repeated XMB open/close and dock interactions remain responsive, complete their animations, and do not leave visible artifacts.' run
+manual_test UI-004 'Empty Home workspace appears in overview' \
+    'orbit-overview open; sleep 1; hyprctl workspaces -j | jq .; orbit-overview close' \
+    'Overview includes the empty Home workspace as a visible workspace target, not only workspaces containing windows.' run
+manual_test UI-005 'No orphaned surfaces after monitor changes' \
+    'hyprctl monitors -j | jq .; hyprctl clients -j | jq -r ".[] | [.address,.class,.monitor,.workspace.name,.mapped,.hidden] | @tsv"' \
+    'After a monitor disconnect/reconnect, every Orbit surface is owned by a current monitor and no dock, XMB, overview, or Settings surface remains stranded.'
+manual_test UI-006 'Alt+Tab release, rapid release, and MRU behavior' \
+    'cat "${XDG_RUNTIME_DIR:?}/orbit/alt-held" 2>/dev/null || true; systemctl --user --no-pager --full status orbit-input-state.service' \
+    'Alt+Tab opens the switcher; releasing Alt closes/activates as designed, rapid release does not stick the overlay, and repeated Alt+Tab follows most-recently-used order.'
+
+manual_test SET-002 'Staged draft, Cancel, Apply, and timeout cancellation' \
+    'orbit-settings snapshot 2>/dev/null || true; pgrep -af "Orbit Settings|Settings.qml" || true' \
+    'Changing a setting updates only a staged draft; Cancel discards it, Apply commits it, and the ten-second confirmation timeout cancels an unconfirmed display change.'
+manual_test SET-003 'Display failed-apply recovery and last-known-good restore' \
+    'orbit-settings snapshot 2>/dev/null || true; hyprctl monitors -j | jq .' \
+    'A deliberately failed display apply in a disposable session restores the last-known-good configuration and leaves the session usable.' blocked
+manual_test SET-004 'Settings while Noctalia remains active' \
+    'systemctl --user --no-pager --plain is-active noctalia.service orbit-shell.service; pgrep -af "noctalia|quickshell.*orbit" || true' \
+    'With Noctalia still active, Orbit Settings opens, renders, applies safe settings, and does not corrupt or steal Noctalia-owned surfaces.'
+
+manual_test THEME-002 'Live reload versus restart behavior per application' \
+    'orbit-theme --help; find "$HOME/.config/orbit/generated" -maxdepth 2 -type f -printf "%p\\n" | sort' \
+    'For each supported application, record whether a palette change is live, reload-only, or restart-required; the observed behavior matches the documented adapter behavior.'
+manual_test THEME-003 'Cross-toolkit visual/runtime matrix' \
+    'orbit-theme --help; find "$HOME/.config/orbit/generated" -maxdepth 2 -type f -printf "%p\\n" | sort' \
+    'GTK, Qt, terminal, Zed, Zen, Obsidian, QuickShell, and Hyprland all use the selected Tokyo Night palette with no unreadable contrast, stale colors, or missing generated adapter.'
+manual_test THEME-004 'Flatpak toolkit styling' \
+    'flatpak list --app 2>/dev/null || true; find "$HOME/.config/orbit/generated" -maxdepth 2 -type f -printf "%p\\n" | sort' \
+    'A representative Flatpak, including ProtonUp-Qt when installed, uses the selected toolkit theme after the required runtime setup and restart.'
+
+manual_test SEC-001 'Input helper device permissions' \
+    'systemctl --user --no-pager --full status orbit-input-state.service; systemctl --user show orbit-input-state.service -p ExecStart -p User; id; ls -l /dev/input/event* 2>/dev/null | head -20' \
+    'The helper reads only the intended keyboard event devices, access is no broader than necessary, and Alt+Tab release tests still pass after permissions are narrowed. Do not treat input-group membership as final security.'
+
+printf '\n== Summary ==\n'
+awk -F '\t' 'NR > 1 { count[$2]++; total++ } END { for (status in count) printf "%s=%d\n", status, count[status]; printf "total=%d\n", total }' "$RESULTS" | sort
+printf 'Results: %s\nCommand log: %s\n' "$RESULTS" "$COMMAND_LOG"
+
+if awk -F '\t' 'NR > 1 && $2 == "FAIL" { found=1 } END { exit !found }' "$RESULTS"; then
+    exit 1
+fi
+exit 0

@@ -17,6 +17,8 @@ Item {
     property var draft: ({})
     property var menu: []
     property var palettes: []
+    property var palettePreviews: ({})
+    property var wallpaper: ({ mode: "shader" })
     property var monitors: []
     property var displayProfiles: []
     property var applicationPolicies: ({})
@@ -33,6 +35,8 @@ Item {
     property var matchLaunchDesktop: null
     property int selectedMonitorIndex: 0
     property var capabilities: ({})
+    property string systemActionStatus: ""
+    property string wallpaperServiceStatus: "unknown"
 
     FileView {
         id: stateFile
@@ -99,6 +103,42 @@ Item {
         }
     }
 
+    Process {
+        id: systemActionProcess
+        running: false
+        stdout: StdioCollector {
+            onStreamFinished: root.finishSystemAction(text)
+        }
+    }
+
+    Process {
+        id: wallpaperStatusProcess
+        command: ["systemctl", "--user", "is-active", "ps3-wave-wallpaper.service"]
+        running: false
+        stdout: StdioCollector {
+            onStreamFinished: root.wallpaperServiceStatus = text.trim() || "unknown"
+        }
+    }
+
+    Process {
+        id: wallpaperRestartProcess
+        command: ["systemctl", "--user", "restart", "ps3-wave-wallpaper.service"]
+        running: false
+        stdout: StdioCollector {
+            onStreamFinished: {
+                Quickshell.execDetached([Quickshell.env("HOME") + "/.config/hypr/scripts/wallpaper-animation", "intro"])
+                root.refreshWallpaperService()
+            }
+        }
+    }
+
+    Timer {
+        interval: 3000
+        running: true
+        repeat: true
+        onTriggered: root.refreshWallpaperService()
+    }
+
     function clone(value) {
         return JSON.parse(JSON.stringify(value || {}))
     }
@@ -111,8 +151,24 @@ Item {
         Quickshell.execDetached([helper, "open"])
     }
 
+    function refreshWallpaperService() {
+        if (!wallpaperStatusProcess.running)
+            wallpaperStatusProcess.running = true
+    }
+
+    function restartWallpaperService() {
+        if (wallpaperRestartProcess.running)
+            return
+        wallpaperServiceStatus = "restarting"
+        wallpaperRestartProcess.running = true
+    }
+
     function close() {
         Quickshell.execDetached([helper, "close"])
+    }
+
+    function reloadOrbit() {
+        Quickshell.execDetached(["systemctl", "--user", "restart", "orbit-shell.service"])
     }
 
     function requestClose() {
@@ -148,6 +204,8 @@ Item {
             draft = clone(activeSettings)
             menu = value.menu || []
             palettes = value.palettes || []
+            palettePreviews = value.palette_previews || {}
+            wallpaper = value.wallpaper || { mode: "shader" }
             monitors = value.monitors || []
             displayProfiles = value.display_profiles || []
             applicationPolicies = value.application_policies || { defaults: {}, rules: [] }
@@ -168,6 +226,35 @@ Item {
         if (!next.theme)
             next.theme = {}
         next.theme.palette = value
+        draft = next
+        dirty = true
+    }
+
+    function setCustomPalette(name, label, colors) {
+        var next = clone(draft)
+        if (!next.theme) next.theme = {}
+        next.theme.palette = name
+        next.theme.custom = { base: activeSettings.theme ? activeSettings.theme.palette : "tokyo-night", label: label, colors: colors }
+        draft = next
+        dirty = true
+    }
+
+    function setAppearanceValue(section, key, value) {
+        var next = clone(draft)
+        if (!next.appearance) next.appearance = {}
+        if (!next.appearance[section]) next.appearance[section] = {}
+        next.appearance[section][key] = value
+        draft = next
+        dirty = true
+    }
+
+    function setAnimationValue(group, key, value) {
+        var next = clone(draft)
+        if (!next.appearance) next.appearance = {}
+        if (!next.appearance.effects) next.appearance.effects = {}
+        if (!next.appearance.effects.animations) next.appearance.effects.animations = {}
+        if (!next.appearance.effects.animations[group]) next.appearance.effects.animations[group] = {}
+        next.appearance.effects.animations[group][key] = value
         draft = next
         dirty = true
     }
@@ -223,6 +310,77 @@ Item {
         draft = next
         dirty = true
     }
+
+    function setTunedProfile(value) {
+        var next = clone(draft)
+        if (!next.system) next.system = {}
+        if (!next.system.power) next.system.power = {}
+        next.system.power.profile = value
+        draft = next
+        dirty = true
+    }
+
+    function setHypridleValue(key, value) {
+        var next = clone(draft)
+        if (!next.system) next.system = {}
+        if (!next.system.power) next.system.power = {}
+        if (!next.system.power.hypridle) next.system.power.hypridle = {}
+        next.system.power.hypridle[key] = value
+        draft = next
+        dirty = true
+    }
+
+    function saveHypridle(values) {
+        var next = clone(draft)
+        if (!next.system) next.system = {}
+        if (!next.system.power) next.system.power = {}
+        next.system.power.hypridle = values
+        draft = next
+        dirty = true
+    }
+
+    function systemAction(action, payload) {
+        if (systemActionProcess.running)
+            return
+        systemActionStatus = "Applying " + action + "..."
+        systemActionProcess.command = [helper, "action", action, JSON.stringify(payload || {})]
+        systemActionProcess.running = true
+    }
+
+    function finishSystemAction(raw) {
+        try {
+            var result = JSON.parse(raw)
+            if (!result.ok)
+                throw new Error(result.error || "Action failed")
+            systemActionStatus = ""
+            refresh()
+        } catch (error) {
+            systemActionStatus = "Action failed: " + error.message
+            refresh()
+        }
+    }
+
+    function setDefaultAudioSink(id) { systemAction("audio-default", { id: id }) }
+    function setDefaultAudioSource(id) { systemAction("audio-default", { id: id }) }
+    function setAudioDeviceVolume(id, value, input) { systemAction(input ? "audio-input-volume" : "audio-volume", { id: id, volume: value }) }
+    function setAudioDeviceMuted(id, value, input) { systemAction(input ? "audio-input-mute" : "audio-mute", { id: id, muted: value }) }
+    function activateNetwork(name) { systemAction("network-up", { name: name }) }
+    function deactivateNetwork(name) { systemAction("network-down", { name: name }) }
+    function networkProfileSave(name, values) { systemAction("network-profile-save", { name: name, values: values }) }
+    function networkProfileAdd(name, type, ssid) { systemAction("network-profile-add", { name: name, type: type, ssid: ssid }) }
+    function networkProfileDelete(name) { systemAction("network-profile-delete", { name: name }) }
+    function scanWifi() { systemAction("network-wifi-scan", {}) }
+    function connectWifi(ssid, password, device) { systemAction("network-wifi-connect", { ssid: ssid, password: password, device: device }) }
+    function connectBluetooth(address) { systemAction("bluetooth-connect", { address: address }) }
+    function disconnectBluetooth(address) { systemAction("bluetooth-disconnect", { address: address }) }
+    function setBluetoothPower(value) { systemAction("bluetooth-power", { powered: value }) }
+    function setBluetoothScanning(value) { systemAction("bluetooth-scan", { discovering: value }) }
+    function pairBluetooth(address) { systemAction("bluetooth-pair", { address: address }) }
+    function trustBluetooth(address, value) { systemAction(value ? "bluetooth-trust" : "bluetooth-untrust", { address: address }) }
+    function blockBluetooth(address, value) { systemAction(value ? "bluetooth-block" : "bluetooth-unblock", { address: address }) }
+    function setBluetoothPairable(value) { systemAction("bluetooth-pairable", { enabled: value }) }
+    function setBluetoothDiscoverable(value) { systemAction("bluetooth-discoverable", { enabled: value }) }
+    function removeBluetooth(address) { systemAction("bluetooth-remove", { address: address }) }
 
     function setDisplayRole(role, monitor) {
         var next = clone(draft)
@@ -517,5 +675,6 @@ Item {
     Component.onCompleted: {
         reloadVisibility()
         refresh()
+        refreshWallpaperService()
     }
 }

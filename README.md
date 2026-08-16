@@ -49,6 +49,16 @@ Generated files are written under
 GTK, Qt, terminal, editor, or application configurations until a later
 migration phase has validated each adapter.
 
+## Icon Theme
+
+GTK3 and GTK4 use the scalable Kora icon theme from
+`.local/share/icons/kora`. Qt applications receive the same theme through
+`hyprqt6engine.conf`, `qt6ct.conf`, and the shared KDE `kdeglobals` file. Orbit
+uses the active Qt icon resolver for desktop-entry and symbolic icons, so it
+does not maintain a second icon asset set. KDE Flatpak applications use the
+same `kdeglobals` configuration; the ProtonUp-Qt helper also sets its sandbox
+icon-theme environment to Kora.
+
 ProtonUp-Qt is a Qt Flatpak and cannot load the host Hypr Qt platform plugin.
 Configure it to use the KDE runtime platform theme and Breeze style with:
 

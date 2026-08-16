@@ -16,6 +16,8 @@
 !.config/orbit/generated/
 !.config/orbit/generated/tokyo-night/
 !.config/orbit/generated/tokyo-night/**
+!.config/orbit/generated/appearance.json
+!.config/orbit/generated/appearance.lua
 !.config/quickshell/
 !.config/quickshell/orbit/
 !.config/quickshell/orbit/**
@@ -105,6 +107,7 @@
 !tests/
 !tests/orbit/
 !tests/orbit/**
+tests/**/__pycache__/
 !Documents/
 !Documents/Obsidian/
 !Documents/Obsidian/MainVault/

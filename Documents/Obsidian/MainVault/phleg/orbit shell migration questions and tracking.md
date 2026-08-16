@@ -78,6 +78,30 @@ Run deterministic tests plus read-only session checks:
 tests/orbit/run-all --live
 ```
 
+### Overnight Soak
+
+The smoke suite is intentionally quick. For unattended stability testing, use
+the non-destructive soak runner:
+
+```sh
+tests/orbit/run-soak --hours 8 --interval 30
+```
+
+Before relying on a new test change, validate the runner with:
+
+```sh
+tests/orbit/run-soak --minutes 2 --interval 5 --snapshot-every 1
+```
+
+The soak runner does not launch applications, change monitors, or mutate
+audio/network/Bluetooth state. It repeatedly exercises XMB/overview open and
+close control paths, validates Hyprland JSON snapshots and settings snapshots,
+checks Orbit service health, restart counts, QuickShell RSS, recent user
+journal output, and generated-theme integrity. It writes `events.jsonl`,
+periodic `snapshots/`, journal captures, and a final `summary.json` beneath the
+run directory. Any observed failure remains recorded while the soak continues
+to gather evidence.
+
 Run as the desktop user with `HOME`, `XDG_RUNTIME_DIR`,
 `HYPRLAND_INSTANCE_SIGNATURE`, and user D-Bus variables intact. A separate
 root terminal should invoke the command as that user rather than assuming

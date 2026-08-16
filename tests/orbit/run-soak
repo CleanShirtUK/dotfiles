@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+set -u -o pipefail
+
+ROOT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)"
+exec python3 "$ROOT_DIR/tests/orbit/soak/test_soak.py" "$@"

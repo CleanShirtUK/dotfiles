@@ -2024,7 +2024,7 @@ Window {
                         onClicked: settingsData.reloadOrbit()
                     }
                     Text {
-                        text: "Restarts the Orbit shell without changing Noctalia or system settings."
+                        text: "Restarts the Orbit shell without changing system settings."
                         color: mutedColor()
                         font.family: themeData.uiFont
                         font.pixelSize: 11

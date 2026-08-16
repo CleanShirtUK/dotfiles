@@ -1,6 +1,6 @@
 # CleanShirtUK Dotfiles
 
-Personal Hyprland and Noctalia configuration.
+Personal Hyprland and Orbit QuickShell configuration.
 
 ## Orbit Monitor Roles
 
@@ -75,7 +75,7 @@ environment value as well. Restart ProtonUp-Qt after changing the override.
 ## Dependencies
 
 - Hyprland, Hypridle, and Hyprlock
-- Noctalia
+- QuickShell and Orbit shell configuration
 - `hyprglass` plugin
 - HyprWindowShade plugin, built by `.local/bin/install-hyprwindowshade`
 - `bash`, `flock`, `jq`, `socat`, `grim`, `slurp`, `wl-copy`, and `zenity`
@@ -198,8 +198,8 @@ The renderer receives transition requests through
 - `intro` at graphical-session startup and after unlock
 - `exit` when locking or shutting down
 
-These transitions hide the Noctalia bar and dock first. Startup and unlock
-intros reveal them again; lock and shutdown exits also blank the configured
+These transitions hide the Orbit shell dock first. Startup and unlock intros
+reveal it again; lock and shutdown exits also blank the configured
 special workspaces. Session transitions play the tracked login/logout sounds.
 On unlock, the previous workspaces are restored after the wallpaper and shell
 reveal has settled.
@@ -271,7 +271,7 @@ Hyprshell is managed by the user service
 `.config/systemd/user/hyprshell.service`, which runs
 `.config/hypr/scripts/hyprshell-start` with automatic restart-on-failure. The
 tracked configuration is in `.config/hyprshell/`, and its stylesheet imports
-the Noctalia GTK4 palette from `.config/gtk-4.0/noctalia.css`.
+the active GTK4 palette from `.config/gtk-4.0/noctalia.css`.
 
 ## GameMode
 

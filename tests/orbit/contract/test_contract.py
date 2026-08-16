@@ -40,15 +40,30 @@ def test_files_and_syntax():
     required = [
         BIN / "orbit-monitor", BIN / "orbit-app-policy", BIN / "orbit-theme",
         BIN / "orbit-settings", BIN / "orbit-overview", BIN / "orbit-xmb",
-        BIN / "orbit-dock",
+        BIN / "orbit-dock", BIN / "orbit-shell-ui",
         HOME / ".config/quickshell/orbit/shell.qml",
+        HOME / ".config/systemd/user/orbit-shell.service",
     ]
     assert all(path.is_file() for path in required)
-    assert all(os.access(path, os.X_OK) for path in required[:7])
+    assert all(os.access(path, os.X_OK) for path in required[:8])
     for path in (HOME / ".config/orbit").rglob("*.toml"):
         tomllib.loads(path.read_text())
     for path in (HOME / ".config/orbit").rglob("*.json"):
         json.loads(path.read_text())
+
+
+def test_startup_contract():
+    hyprland = (HOME / ".config/hypr/hyprland.lua").read_text()
+    transition = (HOME / ".config/hypr/scripts/wallpaper-session-effects").read_text()
+    animation = (HOME / ".config/hypr/scripts/wallpaper-animation").read_text()
+    assert 'orbit-xmb toggle' in hyprland
+    assert 'reserved-workspace-anchors' not in hyprland
+    assert 'noctalia.service' not in hyprland
+    assert 'noctalia msg' not in transition
+    assert 'noctalia msg' not in animation
+    assert not (HOME / ".config/systemd/user/noctalia.service").exists()
+    assert not (HOME / ".config/systemd/user/reserved-workspace-anchors.service").exists()
+    assert not (HOME / ".config/hypr/scripts/reserved-workspace-xmb.qml").exists()
 
 
 def test_dock_persistence():
@@ -312,6 +327,7 @@ def test_power_contract():
 
 def main() -> int:
     check("STATIC-001", test_files_and_syntax)
+    check("START-001", test_startup_contract)
     check("DOCK-001", test_dock_persistence)
     check("MON-001", test_monitor_contract)
     check("APP-001", test_policy_contract)

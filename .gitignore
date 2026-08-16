@@ -65,7 +65,6 @@
 !.config/systemd/user/
 !.config/systemd/user/hyprland-session.target
 !.config/systemd/user/ps3-wave-wallpaper.service
-!.config/systemd/user/noctalia.service
 !.config/systemd/user/hyprshell.service
 !.config/systemd/user/window-shader-events.service
 !.config/systemd/user/localsend.service
@@ -86,6 +85,8 @@
 !.local/bin/orbit-app-observe
 !.local/bin/orbit-theme
 !.local/bin/orbit-shell
+!.local/bin/orbit-shell-ui
+!.local/bin/orbit-overview
 !.local/bin/orbit-xmb
 !.local/bin/dotfiles-install-wallpaper
 !.local/bin/install-hyprwindowshade
@@ -112,4 +113,18 @@ tests/**/__pycache__/
 !Documents/Obsidian/
 !Documents/Obsidian/MainVault/
 !Documents/Obsidian/MainVault/phleg/
+!Documents/Obsidian/MainVault/phleg/Orbit Shell Project.md
+!Documents/Obsidian/MainVault/phleg/Orbit - Architecture.md
+!Documents/Obsidian/MainVault/phleg/Orbit - Change Log.md
+!Documents/Obsidian/MainVault/phleg/Orbit - Decisions and Open Questions.md
+!Documents/Obsidian/MainVault/phleg/Orbit - Issues and Corrections.md
+!Documents/Obsidian/MainVault/phleg/Orbit - Overview.md
+!Documents/Obsidian/MainVault/phleg/Orbit - Prompt Repository.md
+!Documents/Obsidian/MainVault/phleg/Orbit - Refactor Backlog.md
+!Documents/Obsidian/MainVault/phleg/Orbit - Session Scratchpad.md
+!Documents/Obsidian/MainVault/phleg/Orbit - Startup and Session Lifecycle.md
+!Documents/Obsidian/MainVault/phleg/Orbit - Status.md
+!Documents/Obsidian/MainVault/phleg/Orbit - Test Matrix.md
+!Documents/Obsidian/MainVault/phleg/Orbit - Testing Strategy.md
+!Documents/Obsidian/MainVault/phleg/Orbit - Visual Validation Log.md
 !Documents/Obsidian/MainVault/phleg/orbit shell migration questions and tracking.md

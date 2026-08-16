@@ -1,0 +1,29 @@
+#!/bin/sh
+
+set -eu
+
+state_dir="${XDG_CACHE_HOME:-$HOME/.cache}/orbit"
+state_file="$state_dir/shell-visible"
+lock_file="$state_dir/shell-visible.lock"
+mkdir -p "$state_dir"
+
+atomic_write() {
+    value="$1"
+    exec 9>"$lock_file"
+    flock -x 9
+    temporary="$state_file.$$"
+    printf '%s\n' "$value" > "$temporary"
+    mv -f "$temporary" "$state_file"
+}
+
+case "${1:-status}" in
+    show) atomic_write 1 ;;
+    hide) atomic_write 0 ;;
+    status)
+        systemctl --user is-active --quiet orbit-shell.service
+        ;;
+    *)
+        printf 'Usage: %s {show|hide|status}\n' "${0##*/}" >&2
+        exit 2
+        ;;
+esac

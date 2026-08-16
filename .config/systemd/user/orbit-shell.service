@@ -2,6 +2,8 @@
 Description=Orbit QuickShell foundation
 PartOf=hyprland-session.target
 After=hyprland-session.target
+StartLimitIntervalSec=60
+StartLimitBurst=5
 
 [Service]
 ExecStart=%h/.local/bin/orbit-shell

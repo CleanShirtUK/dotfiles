@@ -61,6 +61,7 @@ ShellRoot {
     }
 
     property bool xmbVisible: false
+    property bool shellVisible: true
     property int categoryRailIndex: 0
 
     FileView {
@@ -71,8 +72,20 @@ ShellRoot {
         onFileChanged: reload()
     }
 
+    FileView {
+        id: shellStateFile
+        path: (Quickshell.env("XDG_CACHE_HOME") || (root.home + "/.cache")) + "/orbit/shell-visible"
+        watchChanges: true
+        onLoaded: root.reloadShellState()
+        onFileChanged: reload()
+    }
+
     function reloadXmbState() {
         xmbVisible = xmbStateFile.text().trim() === "1"
+    }
+
+    function reloadShellState() {
+        shellVisible = shellStateFile.text().trim() !== "0"
     }
 
     function moveXmbCategory(delta) {
@@ -103,6 +116,7 @@ ShellRoot {
             id: dock
             required property var modelData
             screen: modelData
+            visible: root.shellVisible
             anchors.bottom: true
             exclusiveZone: 58
             implicitWidth: dockContent.implicitWidth + 100

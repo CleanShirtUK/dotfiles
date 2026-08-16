@@ -4,22 +4,35 @@ set -eu
 
 state_dir="${XDG_CACHE_HOME:-$HOME/.cache}/orbit"
 state_file="$state_dir/xmb-visible"
+lock_file="$state_dir/xmb.lock"
 mkdir -p "$state_dir"
+
+write_state() {
+    temporary="$state_file.$$"
+    printf '%s\n' "$1" > "$temporary"
+    mv -f "$temporary" "$state_file"
+}
 
 case "${1:-toggle}" in
     open)
-        printf '1\n' > "$state_file"
+        exec 9>"$lock_file"
+        flock -x 9
+        write_state 1
         ;;
     close)
-        printf '0\n' > "$state_file"
+        exec 9>"$lock_file"
+        flock -x 9
+        write_state 0
         ;;
     toggle)
+        exec 9>"$lock_file"
+        flock -x 9
         current=0
         [ -f "$state_file" ] && current="$(tr -d '[:space:]' < "$state_file")"
         if [ "$current" = 1 ]; then
-            printf '0\n' > "$state_file"
+            write_state 0
         else
-            printf '1\n' > "$state_file"
+            write_state 1
         fi
         ;;
     *)

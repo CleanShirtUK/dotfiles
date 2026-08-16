@@ -180,9 +180,12 @@ manual_test SET-002 'Staged draft, Cancel, Apply, and timeout cancellation' \
 manual_test SET-003 'Display failed-apply recovery and last-known-good restore' \
     'orbit-settings snapshot 2>/dev/null || true; hyprctl monitors -j | jq .' \
     'A deliberately failed display apply in a disposable session restores the last-known-good configuration and leaves the session usable.' blocked
-manual_test SET-004 'Settings while Noctalia remains active' \
-    'systemctl --user --no-pager --plain is-active noctalia.service orbit-shell.service; pgrep -af "noctalia|quickshell.*orbit" || true' \
-    'With Noctalia still active, Orbit Settings opens, renders, applies safe settings, and does not corrupt or steal Noctalia-owned surfaces.'
+manual_test START-001 'Orbit startup after session environment import' \
+    'systemctl --user --no-pager --full status orbit-shell.service; pgrep -af "quickshell.*orbit" || true' \
+    'After a fresh login and after reusing the user manager, Orbit starts once, remains active, and owns the shell surfaces.'
+manual_test START-002 'Noctalia and reserved prototype are absent from autostart' \
+    'systemctl --user --no-pager --plain is-enabled noctalia.service reserved-workspace-anchors.service 2>/dev/null || true; hyprctl clients -j | jq -r '\''.[].title'\'' | grep -E '\''^phleg-xmb-'\'' || true' \
+    'Noctalia and the reserved-workspace anchor service are disabled/absent, and no fullscreen prototype clients exist.'
 
 manual_test THEME-002 'Live reload versus restart behavior per application' \
     'orbit-theme --help; find "$HOME/.config/orbit/generated" -maxdepth 2 -type f -printf "%p\\n" | sort' \

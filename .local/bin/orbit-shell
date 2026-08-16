@@ -5,9 +5,11 @@ set -eu
 state_dir="${XDG_CACHE_HOME:-$HOME/.cache}/orbit"
 state_file="$state_dir/xmb-visible"
 overview_state_file="$state_dir/overview-visible"
+shell_state_file="$state_dir/shell-visible"
 mkdir -p "$state_dir"
 [ -f "$state_file" ] || printf '0\n' > "$state_file"
 [ -f "$overview_state_file" ] || printf 'closed 0\n' > "$overview_state_file"
+[ -f "$shell_state_file" ] || printf '1\n' > "$shell_state_file"
 
 overview="$HOME/.local/bin/orbit-overview"
 
@@ -15,6 +17,18 @@ overview="$HOME/.local/bin/orbit-overview"
 # controls that have not yet been replaced by an Orbit component; Breeze is a
 # Qt Widgets style and does not style Qt Quick Controls.
 export QT_QUICK_CONTROLS_STYLE=Basic
+
+for _ in $(seq 1 30); do
+    if [ -n "${WAYLAND_DISPLAY:-}" ] && [ -n "${HYPRLAND_INSTANCE_SIGNATURE:-}" ] && command -v hyprctl >/dev/null 2>&1; then
+        break
+    fi
+    sleep 0.5
+done
+
+if [ -z "${WAYLAND_DISPLAY:-}" ] || [ -z "${HYPRLAND_INSTANCE_SIGNATURE:-}" ]; then
+    printf 'Orbit requires a Hyprland Wayland session environment.\n' >&2
+    exit 1
+fi
 
 # Hyprshell installs its switcher bindings at runtime rather than keeping
 # them in the compositor configuration. The Lua evaluator is required here

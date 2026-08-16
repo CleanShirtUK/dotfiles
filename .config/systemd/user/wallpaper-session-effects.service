@@ -1,7 +1,7 @@
 [Unit]
 Description=PS3 wallpaper and shell startup transition
 PartOf=hyprland-session.target
-After=hyprland-session.target ps3-wave-wallpaper.service noctalia.service
+After=hyprland-session.target orbit-shell.service ps3-wave-wallpaper.service
 
 [Service]
 ExecStart=%h/.config/hypr/scripts/wallpaper-session-effects

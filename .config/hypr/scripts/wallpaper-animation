@@ -6,20 +6,20 @@ signal_renderer() {
     printf '%s\n' "$1" > "$HOME/.cache/ps3-wave-wallpaper/control"
 }
 
+shell_ui="$HOME/.local/bin/orbit-shell-ui"
+
 play_session_sound() {
     "$HOME/.local/bin/play-session-sound" "$1" >/dev/null 2>&1 || true
 }
 
 case "${1:-}" in
     intro)
-        noctalia msg bar-hide >/dev/null 2>&1 || true
-        noctalia msg dock-hide >/dev/null 2>&1 || true
+        "$shell_ui" hide >/dev/null 2>&1 || true
         play_session_sound login
         signal_renderer intro
         ;;
     exit)
-        noctalia msg bar-hide >/dev/null 2>&1 || true
-        noctalia msg dock-hide >/dev/null 2>&1 || true
+        "$shell_ui" hide >/dev/null 2>&1 || true
         "$HOME/.config/hypr/scripts/blank-special-workspaces" enter
         play_session_sound logout
         signal_renderer exit

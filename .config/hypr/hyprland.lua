@@ -6,7 +6,7 @@ package.path = home .. "/.config/hypr/?.lua;" .. package.path
 local noctalia = require("noctalia-colors")
 local terminal = "wezterm"
 local fileManager = "nautilus"
-local launcher = "noctalia msg panel-toggle launcher"
+local launcher = home .. "/.local/bin/orbit-xmb toggle"
 local scripts = home .. "/.config/hypr/scripts"
 local gpuScreenRecorder = home .. "/.local/bin/gpu-screen-recorder-control"
 local animateLock = scripts .. "/animate-lock"
@@ -55,10 +55,10 @@ hl.on("hyprland.start", function()
     hl.exec_cmd("systemctl --user set-environment QT_STYLE_OVERRIDE=Breeze")
     hl.exec_cmd("systemctl --user import-environment WAYLAND_DISPLAY XDG_CURRENT_DESKTOP HYPRLAND_INSTANCE_SIGNATURE QT_QPA_PLATFORMTHEME QT_STYLE_OVERRIDE")
     hl.exec_cmd("systemctl --user start hyprland-session.target")
-    hl.exec_cmd("systemctl --user restart reserved-workspace-anchors.service")
-    -- Restart Wayland-bound services when greetd reuses the user manager for a
-    -- new Hyprland instance after logout.
-    hl.exec_cmd("sh -c 'sleep 3; systemctl --user reset-failed noctalia.service; systemctl --user stop noctalia.service ps3-wave-wallpaper.service wallpaper-session-effects.service; systemctl --user start noctalia.service ps3-wave-wallpaper.service wallpaper-session-effects.service' &")
+    -- Restart Wayland-bound services after importing the environment. This is
+    -- also safe when the user manager survives a logout/login transition.
+    hl.exec_cmd("systemctl --user reset-failed orbit-shell.service ps3-wave-wallpaper.service wallpaper-session-effects.service")
+    hl.exec_cmd("systemctl --user restart orbit-shell.service ps3-wave-wallpaper.service wallpaper-session-effects.service")
     hl.exec_cmd("systemctl --user restart game-mode.service")
     -- Restart after importing the session environment so hypridle can reach Wayland.
     hl.exec_cmd("systemctl --user restart hypridle.service")
@@ -416,25 +416,6 @@ hl.window_rule({
     match = { class = "^steam$" },
     float = true,
 })
-
-for _, title in ipairs({
-    "^phleg-xmb-dp1$",
-    "^phleg-xmb-hdmi$",
-}) do
-    hl.window_rule({
-        name = "reserved-workspace-xmb-" .. title,
-        match = { class = "^org\\.quickshell$", title = title },
-        float = true,
-        fullscreen = true,
-        immediate = true,
-        focus_on_activate = true,
-        no_anim = true,
-        decorate = false,
-        no_blur = true,
-        no_shadow = true,
-        tag = "+hyprglass_disabled",
-    })
-end
 
 hl.window_rule({
     name = "keep-steam-main-window-tiled",

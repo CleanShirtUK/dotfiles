@@ -2,6 +2,22 @@
 
 Personal Hyprland and Orbit QuickShell configuration.
 
+## Planned Repository Boundaries
+
+This repository is currently the transitional Standard dotfiles repository for
+the complete desktop setup. The stable target is three separately usable
+projects:
+
+- Standard dotfiles: reproducible desktop setup and optional integration with
+  Orbit and the standalone Wallpaper project.
+- Orbit: QuickShell shell, Orbit services, Orbit configuration, and Orbit-only
+  dependencies.
+- Wallpaper: standalone PS3 wave wallpaper project and configuration, usable
+  without Orbit.
+
+The planned ownership and dependency direction are documented in
+`Documents/Obsidian/MainVault/phleg/Orbit - Repository Boundaries.md`.
+
 ## Orbit Monitor Roles
 
 Orbit uses logical monitor roles instead of making desktop behavior depend on

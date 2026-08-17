@@ -36,3 +36,7 @@ Run live and soak tests as the desktop user with the graphical session environme
 ## Recording Rule
 
 Every manual result records date, environment, exact steps, expected result, actual result, evidence path, and follow-up issue. Use [[Orbit - Issues and Corrections]] for anything that is not an unambiguous pass.
+
+## Confirmed-Fix Commit Rule
+
+When a fix has passed its deterministic checks and all applicable live, attended, hardware, or recovery gates, update the relevant Orbit documentation and commit and push that confirmed fix at that stage. Do not accumulate confirmed fixes across unrelated work. Blocked or unvalidated changes remain documented as such and are not described as complete.

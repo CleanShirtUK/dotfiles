@@ -6,6 +6,8 @@ tags: [orbit, architecture]
 
 # Orbit Architecture
 
+The planned repository split is documented in [[Orbit - Repository Boundaries]]. The current worktree is still a transitional combined dotfiles repository.
+
 ## Ownership
 
 | Responsibility | Owner |

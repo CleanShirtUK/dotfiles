@@ -138,7 +138,6 @@ Item {
         if (nextVisible) {
             lastCycleRequest = ""
             selectFocused()
-            Qt.callLater(root.focusSelectedWorkspace)
         } else {
             lastCycleRequest = ""
         }

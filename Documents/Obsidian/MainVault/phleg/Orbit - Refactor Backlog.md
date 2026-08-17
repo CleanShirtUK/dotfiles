@@ -8,9 +8,12 @@ tags: [orbit, refactor]
 
 ## Priority 1: State And Lifecycle
 
+- [ ] Replace broad `input`-group elevation with a device-specific keyboard ACL or privileged helper, with Alt-release regression coverage. Source: `ORB-INPUT-PERMISSIONS`.
+- [x] Make runtime Alt+Tab binding installation retry-aware across compositor startup transitions; fresh-login validation remains. Source: `ORB-STARTUP-BINDINGS`.
 - [ ] Centralize atomic state-file writes and advisory locking.
 - [ ] Make overview state, revision, and cycle requests one state machine.
 - [ ] Select one authoritative Alt-release event source.
+- [ ] Serialize or coalesce asynchronous workspace-focus requests during rapid overview cycling. Source: `ORB-ALT-RAPID-CYCLE`.
 - [ ] Add duplicate-process and startup readiness tests.
 
 ## Priority 2: Runtime Snapshots
@@ -31,6 +34,10 @@ tags: [orbit, refactor]
 - [ ] Split `SettingsModel.qml` by draft lifecycle, application matching, and system actions.
 - [ ] Split `orbit-settings` persistence, validation, artifact generation, and runtime adapters.
 - [ ] Implement prepare/apply/verify/rollback for display changes.
+
+## Priority 6: Visual Polish And Feature Work
+
+- [ ] Define and implement a cohesive dock-to-XMB transition when the dock launcher is activated; validate with `UI-007` and user approval. Source: `ORB-XMB-TRANSITION`.
 
 ## Rules
 

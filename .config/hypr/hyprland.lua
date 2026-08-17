@@ -64,7 +64,7 @@ hl.on("hyprland.start", function()
     hl.exec_cmd("systemctl --user restart hypridle.service")
     hl.exec_cmd("systemctl --user restart localsend.service")
     hl.exec_cmd("systemctl --user start xdg-desktop-portal-hyprland")
-    hl.exec_cmd([[sh -c 'hyprpm reload 2>/dev/null || true; hyprctl plugin load ]] .. hyprGlassPlugin .. [[ 2>/dev/null || true; hyprctl plugin load ]] .. hyprWindowShadePlugin .. [[ 2>/dev/null || true; systemctl --user restart window-shader-events.service; sleep 0.5; hyprctl reload config-only']])
+    hl.exec_cmd([[sh -c 'hyprpm reload 2>/dev/null || true; hyprctl plugin load ]] .. hyprGlassPlugin .. [[ 2>/dev/null || true; hyprctl plugin load ]] .. hyprWindowShadePlugin .. [[ 2>/dev/null || true; systemctl --user restart window-shader-events.service; sleep 0.5; hyprctl reload config-only; systemctl --user restart orbit-shell.service']])
 end)
 
 hl.on("hyprland.shutdown", function()

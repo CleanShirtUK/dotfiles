@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
 import subprocess
 from pathlib import Path
@@ -73,11 +74,24 @@ def check_services():
             raise AssertionError(f"{service}: {result.stdout.strip() or result.stderr.strip()}")
 
 
+def check_overview_bindings():
+    require_session()
+    output = command("hyprctl", "binds")
+    blocks = re.split(r"(?m)(?=^(?:bind|binde|bindr)$)", output)
+    tab = [block for block in blocks if re.search(r"(?m)^\s*key: TAB\s*$", block)]
+    alt_left = [block for block in blocks if re.search(r"(?m)^\s*key: Alt_L\s*$", block)]
+    alt_right = [block for block in blocks if re.search(r"(?m)^\s*key: Alt_R\s*$", block)]
+    assert len(tab) == 1 and tab[0].startswith("bind\n"), "Alt+Tab binding is missing or repeating"
+    assert len(alt_left) == 1 and alt_left[0].startswith("bindr\n"), "Alt_L release binding is missing"
+    assert len(alt_right) == 1 and alt_right[0].startswith("bindr\n"), "Alt_R release binding is missing"
+
+
 def main() -> int:
     LOG_DIR.mkdir(parents=True, exist_ok=True)
     check("LIVE-001", capture_state)
     check("LIVE-002", check_roles)
     check("LIVE-003", check_services)
+    check("START-004", check_overview_bindings)
     result_path = LOG_DIR / "live.results.json"
     result_path.write_text(json.dumps({"tests": RESULTS}, indent=2) + "\n")
     print(json.dumps({"tests": RESULTS}, indent=2))

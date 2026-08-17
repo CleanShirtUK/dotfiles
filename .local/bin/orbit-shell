@@ -31,15 +31,29 @@ if [ -z "${WAYLAND_DISPLAY:-}" ] || [ -z "${HYPRLAND_INSTANCE_SIGNATURE:-}" ]; t
 fi
 
 # Hyprshell installs its switcher bindings at runtime rather than keeping
-# them in the compositor configuration. The Lua evaluator is required here
-# because this installation uses the Lua Hyprland parser.
-hyprctl eval 'hl.unbind("ALT + TAB")' >/dev/null 2>&1 || true
-hyprctl eval 'hl.unbind("ALT + Alt_L")' >/dev/null 2>&1 || true
-hyprctl eval 'hl.unbind("ALT + Alt_R")' >/dev/null 2>&1 || true
-hyprctl eval 'hl.unbind("Alt_L")' >/dev/null 2>&1 || true
-hyprctl eval 'hl.unbind("Alt_R")' >/dev/null 2>&1 || true
-hyprctl eval "hl.bind(\"ALT + TAB\", hl.dsp.exec_cmd(\"$overview cycle\"), { repeating = true })" >/dev/null 2>&1 || true
-hyprctl eval "hl.bind(\"Alt_L\", hl.dsp.exec_cmd(\"$overview close\"), { release = true })" >/dev/null 2>&1 || true
-hyprctl eval "hl.bind(\"Alt_R\", hl.dsp.exec_cmd(\"$overview close\"), { release = true })" >/dev/null 2>&1 || true
+# them in the compositor configuration. Retry while the new compositor's
+# control socket becomes ready instead of silently losing the bindings.
+install_overview_bindings() {
+    hyprctl eval 'hl.unbind("ALT + TAB")' >/dev/null 2>&1 \
+        && hyprctl eval 'hl.unbind("Alt_L")' >/dev/null 2>&1 \
+        && hyprctl eval 'hl.unbind("Alt_R")' >/dev/null 2>&1 \
+        && hyprctl eval "hl.bind(\"ALT + TAB\", hl.dsp.exec_cmd(\"$overview cycle\"), { repeating = false })" >/dev/null 2>&1 \
+        && hyprctl eval "hl.bind(\"Alt_L\", hl.dsp.exec_cmd(\"$overview close\"), { release = true })" >/dev/null 2>&1 \
+        && hyprctl eval "hl.bind(\"Alt_R\", hl.dsp.exec_cmd(\"$overview close\"), { release = true })" >/dev/null 2>&1
+}
+
+bindings_ready() {
+    bindings="$(hyprctl binds 2>/dev/null || true)"
+    printf '%s\n' "$bindings" | grep -q '^[[:space:]]*key: TAB$' \
+        && printf '%s\n' "$bindings" | grep -q '^[[:space:]]*key: Alt_L$' \
+        && printf '%s\n' "$bindings" | grep -q '^[[:space:]]*key: Alt_R$'
+}
+
+for _ in $(seq 1 30); do
+    if install_overview_bindings && bindings_ready; then
+        break
+    fi
+    sleep 0.5
+done
 
 exec "$HOME/.local/bin/phleg-quickshell" --no-duplicate --path "$HOME/.config/quickshell/orbit/shell.qml"

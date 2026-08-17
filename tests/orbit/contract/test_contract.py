@@ -59,11 +59,32 @@ def test_startup_contract():
     assert 'orbit-xmb toggle' in hyprland
     assert 'reserved-workspace-anchors' not in hyprland
     assert 'noctalia.service' not in hyprland
+    assert "hyprctl reload config-only; systemctl --user restart orbit-shell.service" in hyprland
     assert 'noctalia msg' not in transition
     assert 'noctalia msg' not in animation
     assert not (HOME / ".config/systemd/user/noctalia.service").exists()
     assert not (HOME / ".config/systemd/user/reserved-workspace-anchors.service").exists()
     assert not (HOME / ".config/hypr/scripts/reserved-workspace-xmb.qml").exists()
+
+
+def test_input_helper_permission_contract():
+    service = (HOME / ".config/systemd/user/orbit-input-state.service").read_text()
+    assert "ExecStart=/usr/bin/sg input -c %h/.local/bin/orbit-input-state" in service
+
+
+def test_overview_binding_contract():
+    shell = (BIN / "orbit-shell").read_text()
+    assert 'hl.bind(\\"ALT + TAB\\", hl.dsp.exec_cmd(\\"$overview cycle\\"), { repeating = false })' in shell
+    assert "for _ in $(seq 1 30)" in shell
+    assert "bindings_ready()" in shell
+    assert "grep -q '^[[:space:]]*key: TAB$'" in shell
+    assert "grep -q '^[[:space:]]*key: Alt_L$'" in shell
+    assert "grep -q '^[[:space:]]*key: Alt_R$'" in shell
+
+
+def test_overview_open_ownership_contract():
+    model = (HOME / ".config/quickshell/orbit/OverviewModel.qml").read_text()
+    assert model.count("Qt.callLater(root.focusSelectedWorkspace)") == 1
 
 
 def test_dock_persistence():
@@ -301,7 +322,10 @@ def test_system_adapter_contract():
 
 def test_state_contract():
     with tempfile.TemporaryDirectory() as directory:
-        environment = {**os.environ, "XDG_CACHE_HOME": directory, "HOME": str(HOME)}
+        runtime = Path(directory) / "runtime"
+        (runtime / "orbit").mkdir(parents=True)
+        (runtime / "orbit/alt-held").write_text("1\n")
+        environment = {**os.environ, "XDG_CACHE_HOME": directory, "XDG_RUNTIME_DIR": str(runtime), "HOME": str(HOME)}
         xmb = BIN / "orbit-xmb"
         subprocess.run([str(xmb), "open"], env=environment, check=True)
         assert (Path(directory) / "orbit/xmb-visible").read_text().strip() == "1"
@@ -309,6 +333,10 @@ def test_state_contract():
         assert (Path(directory) / "orbit/xmb-visible").read_text().strip() == "0"
         overview = BIN / "orbit-overview"
         subprocess.run([str(overview), "close-state"], env=environment, check=True)
+        subprocess.run([str(overview), "cycle"], env=environment, check=True)
+        assert (Path(directory) / "orbit/overview-visible").read_text().startswith("open ")
+        subprocess.run([str(overview), "close-state"], env=environment, check=True)
+        (runtime / "orbit/alt-held").write_text("0\n")
         subprocess.run([str(overview), "cycle"], env=environment, check=True)
         assert (Path(directory) / "orbit/overview-visible").read_text().startswith("open ")
 
@@ -328,6 +356,9 @@ def test_power_contract():
 def main() -> int:
     check("STATIC-001", test_files_and_syntax)
     check("START-001", test_startup_contract)
+    check("SEC-001", test_input_helper_permission_contract)
+    check("UI-006", test_overview_binding_contract)
+    check("STATE-002", test_overview_open_ownership_contract)
     check("DOCK-001", test_dock_persistence)
     check("MON-001", test_monitor_contract)
     check("APP-001", test_policy_contract)

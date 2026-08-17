@@ -17,3 +17,9 @@ tags: [orbit, history]
 - Added a context-clean prompt repository and freeform session scratchpad for repeatable OpenCode workflows.
 
 Older implementation history remains available in Git history and should be summarized here only after current evidence is reproduced.
+
+## 2026-08-17
+
+- Confirmed rapid Alt+Tab workspace switching and startup binding lifecycle after fresh-login and attended validation.
+- Adopted the rule that confirmed fixes are documented, committed, and pushed immediately.
+- Documented the target split into Standard dotfiles, Orbit, and standalone Wallpaper repositories; the current combined repository remains transitional.

@@ -29,4 +29,6 @@ Replace Noctalia with a maintainable QuickShell desktop shell for Hyprland while
 
 Orbit owns the shell, dock, XMB, overview, settings, and shell visibility transitions. The PS3 wallpaper remains a separate service. Noctalia is no longer a session autostart dependency; remaining historical filenames such as `noctalia.css` are theme-adapter compatibility names and should be renamed in a separate controlled change.
 
+The target three-repository boundary is documented in [[Orbit - Repository Boundaries]]. It will be implemented as a later migration; the current repository remains the transitional complete desktop setup.
+
 See [[Orbit - Status]] for deliverables and [[Orbit - Issues and Corrections]] for known defects.

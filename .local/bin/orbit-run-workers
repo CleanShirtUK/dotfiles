@@ -152,12 +152,21 @@ snapshot_tree() {
     local output=$1 index_file tree
     index_file=$(mktemp "$state_dir/snapshot-index.XXXXXX")
     rm -f "$index_file"
-    GIT_INDEX_FILE=$index_file git -C "$ROOT" read-tree HEAD
+    if ! GIT_INDEX_FILE=$index_file git -C "$ROOT" read-tree HEAD; then
+        rm -f "$index_file"
+        return 1
+    fi
     # Orbit runtime state is already ignored. Adding the worktree root captures
     # every trackable change without explicitly naming the ignored state path,
     # which Git rejects even when it appears only as an exclusion pathspec.
-    GIT_INDEX_FILE=$index_file git -C "$ROOT" add -A -- .
-    tree=$(GIT_INDEX_FILE=$index_file git -C "$ROOT" write-tree)
+    if ! GIT_INDEX_FILE=$index_file git -C "$ROOT" add -A -- .; then
+        rm -f "$index_file"
+        return 1
+    fi
+    if ! tree=$(GIT_INDEX_FILE=$index_file git -C "$ROOT" write-tree); then
+        rm -f "$index_file"
+        return 1
+    fi
     rm -f "$index_file"
     printf '%s\n' "$tree" >"$output"
 }

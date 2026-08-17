@@ -380,7 +380,7 @@ validate_worker_result() {
         fail 1 'result item ID does not match the manifest'
     [[ $(jq -r '.source_sha256' "$result") == $(jq -r '.source_sha256' "$manifest") ]] ||
         fail 1 'result source hash does not match the manifest'
-    [[ $(jq -c '.test_ids | sort' "$result") == $(jq -c '.test_ids | sort' "$manifest") ]] ||
+    [[ "$(jq -c '.test_ids | sort' "$result")" == "$(jq -c '.test_ids | sort' "$manifest")" ]] ||
         fail 1 'result test IDs do not exactly match the manifest'
     [[ $(jq -r '.queue_state.source_ref' "$result") == $(jq -r '.source_ref' "$manifest") ]] ||
         fail 1 'result queue source does not match the manifest'
@@ -472,8 +472,12 @@ verify_and_publish() {
         audit_output=$run_dir/implementation-audit.json
         audit_decision=$(run_audit IMPLEMENTATION "$item_id" "$risk" \
             "${audit_context#$ROOT/}" "$audit_output")
-        [[ $audit_decision == APPROVE ]] ||
+        if [[ $audit_decision == MANUAL_REQUIRED ]]; then
+            [[ $queue_state == READY_ADDED || $queue_state == READY_UPDATED ]] ||
+                fail 3 'Sol requires manual validation but no unique READY handoff was recorded'
+        elif [[ $audit_decision != APPROVE ]]; then
             fail 3 "Sol high-risk implementation audit returned $audit_decision; no commit was made"
+        fi
     fi
 
     snapshot_tree "$run_dir/pre-commit-tree"
@@ -485,7 +489,7 @@ verify_and_publish() {
     git -C "$ROOT" add -- "${changed_paths[@]}"
     staged_json=$(git -C "$ROOT" diff --cached --name-only -z |
         jq -Rs 'split("\u0000") | map(select(length > 0)) | sort')
-    [[ $(jq -c . <<<"$staged_json") == $(jq -c . <<<"$changed_json") ]] ||
+    [[ "$(jq -c . <<<"$staged_json")" == "$(jq -c . <<<"$changed_json")" ]] ||
         fail 1 'staged paths do not exactly match the verified item'
     git -C "$ROOT" diff --cached --check || fail 1 'staged item failed git diff --check'
 
@@ -498,7 +502,7 @@ verify_and_publish() {
         fail 1 "commit $commit_id has an unexpected parent; it was not pushed"
     commit_paths_json=$(git -C "$ROOT" diff-tree --no-commit-id --name-only -r -z "$commit_id" |
         jq -Rs 'split("\u0000") | map(select(length > 0)) | sort')
-    [[ $(jq -c . <<<"$commit_paths_json") == $(jq -c . <<<"$changed_json") ]] ||
+    [[ "$(jq -c . <<<"$commit_paths_json")" == "$(jq -c . <<<"$changed_json")" ]] ||
         fail 1 "commit $commit_id contains paths outside the verified item; it was not pushed"
     if ! git -C "$ROOT" push "$EXPECTED_REMOTE" "HEAD:$EXPECTED_BRANCH"; then
         fail 1 "commit $commit_id exists locally but push failed; stopping safely"
@@ -518,8 +522,10 @@ if $resume_sol; then
         fail 2 '--resume-sol requires a MANUAL_ONLY manifest'
     [[ $(jq -r '.risk' "$manifest") == high ]] || fail 2 '--resume-sol requires risk high'
     run_relative=$(jq -r '.supervisor.run_directory' "$manifest")
-    safe_relative_path "$run_relative/placeholder" || fail 2 'manifest run directory is unsafe'
-    [[ $run_relative == .local/state/orbit/runs/* ]] || fail 2 'manifest run directory is outside Orbit state'
+    [[ -n $run_relative && $run_relative != /* && $run_relative != *'..'* &&
+       $run_relative != *$'\n'* && $run_relative != *$'\r'* &&
+       $run_relative == .local/state/orbit/runs/* ]] ||
+        fail 2 'manifest run directory is outside or escapes Orbit state'
     run_dir=$ROOT/$run_relative
     verify_allowed_paths_clean_at_start \
         "$(jq -r '.supervisor.base_commit' "$manifest")" \

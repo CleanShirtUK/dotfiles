@@ -159,11 +159,12 @@ or rewrites history.
 
 ## Starting The Loop
 
-OpenCode model IDs are deliberately not stored in this repository because the
-available Luna ID has not been proven here. Obtain the exact currently
-available IDs locally, and use only included Luna and Sol models that do not
-invoke an external paid provider or consume extra credits. Passing the IDs is
-an explicit operator assertion of that billing boundary.
+Agent definitions do not hard-pin a model, so the same workflow remains usable
+if subscription model names change. `opencode models` currently exposes
+`openai/gpt-5.6-luna` and `openai/gpt-5.6-sol` through the configured OpenAI
+subscription. Set `ORBIT_LUNA_MODEL` and `ORBIT_SOL_MODEL` to those exact IDs;
+re-check the model list before a long run and do not substitute an external
+paid provider or credit-backed model.
 
 Default bounded run:
 

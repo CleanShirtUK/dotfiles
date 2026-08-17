@@ -534,6 +534,7 @@ while ((completed < max_items)); do
     base_commit=$(git -C "$ROOT" rev-parse HEAD)
     snapshot_tree "$run_dir/baseline-tree"
     baseline_tree=$(<"$run_dir/baseline-tree")
+    cp "$run_dir/baseline-tree" "$run_dir/initial-baseline-tree"
 
     status_entries=$(git -C "$ROOT" status --porcelain=v1 --untracked-files=all |
         jq -Rsc 'split("\n") | map(select(length > 0))')
@@ -552,12 +553,41 @@ while ((completed < max_items)); do
         fail 1 "Luna selector failed or timed out; see $selector_log.stderr"
     [[ -s $manifest ]] || fail 1 'selector did not write item-manifest.json'
     validate_manifest false
-    seal_manifest "$run_dir" "$baseline_tree" "$base_commit"
 
     selection_state=$(jq -r '.selection_state' "$manifest")
     item_id=$(jq -r '.item_id' "$manifest")
     risk=$(jq -r '.risk' "$manifest")
     source_ref=$(jq -r '.source_ref' "$manifest")
+    snapshot_tree "$run_dir/post-plan-tree"
+    post_plan_tree=$(<"$run_dir/post-plan-tree")
+
+    # Tracked runtime-owned files can legitimately change while the selector is
+    # reading. Protect the selected boundary rather than attributing every
+    # unrelated concurrent change to the read-only selector, then make the
+    # post-selection tree the worker's immutable baseline.
+    if [[ $selection_state == READY || $selection_state == MANUAL_ONLY ]]; then
+        source_file=$(jq -r '.source_file' "$manifest")
+        git -C "$ROOT" diff --quiet "$baseline_tree" "$post_plan_tree" -- "$source_file" ||
+            fail 1 "selected source changed during planning: $source_file"
+        while IFS= read -r path; do
+            git -C "$ROOT" diff --quiet "$baseline_tree" "$post_plan_tree" -- "$path" ||
+                fail 1 "selected path changed during planning: $path"
+        done < <(jq -r '.allowed_paths[]' "$manifest")
+    fi
+    baseline_tree=$post_plan_tree
+    printf '%s\n' "$baseline_tree" >"$run_dir/baseline-tree"
+
+    status_entries=$(git -C "$ROOT" status --porcelain=v1 --untracked-files=all |
+        jq -Rsc 'split("\n") | map(select(length > 0))')
+    jq -n --arg root "$ROOT" --arg branch "$EXPECTED_BRANCH" --arg remote "$EXPECTED_REMOTE_URL" \
+        --arg base_commit "$base_commit" --arg baseline_tree "$baseline_tree" \
+        --arg created_at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" --argjson entries "$status_entries" \
+        '{schema_version: 1, root: $root, branch: $branch, remote: $remote,
+          base_commit: $base_commit, baseline_tree: $baseline_tree,
+          created_at: $created_at, entries: $entries}' >"$dirty_manifest"
+    cp "$dirty_manifest" "$run_dir/starting-dirty.json"
+
+    seal_manifest "$run_dir" "$baseline_tree" "$base_commit"
     if [[ $selection_state == READY || $selection_state == MANUAL_ONLY ]]; then
         verify_allowed_paths_clean_at_start "$base_commit" "$baseline_tree"
         ready_before=$(ready_source_count "$source_ref")
@@ -574,10 +604,6 @@ while ((completed < max_items)); do
           selection_state: $selection_state, manifest: $manifest,
           starting_dirty_manifest: $starting_dirty, validation_queue: $queue_file,
           ready_source_count_before: $ready_before}' >"$plan_context"
-    snapshot_tree "$run_dir/post-plan-tree"
-    [[ $(<"$run_dir/post-plan-tree") == "$baseline_tree" ]] ||
-        fail 1 'selector or plan audit changed the project worktree'
-
     case $selection_state in
         QUEUE_EMPTY)
             printf 'Orbit selector reports that no actionable item remains. Run a manual Sol phase audit before declaring the phase complete.\n'

@@ -218,9 +218,9 @@ Never mutate the active display, graphical/login session, network configuration,
 
 A judged-safe package install is allowed for medium-risk work. Record the package manager, exact command, package, operation, resolved version, and result before and after the change. Record every sudo command verbatim. Never use an external paid model provider or extra credits.
 
-If a manual gate remains, append exactly one complete READY entry whose source is `source_ref` and which includes `source_sha256`. Never refresh or duplicate an existing READY source. Include the exact environment, prerequisites, safe reset, numbered steps, expected result, automated evidence, remaining gate, and evidence to capture.
+If a manual gate remains and no READY source exists, append exactly one complete entry whose source is `source_ref` and which includes `source_sha256`. If exactly one READY source already exists, update that entry in place with current evidence while preserving its history; never append a duplicate. Include the exact environment, prerequisites, safe reset, numbered steps, expected result, automated evidence, remaining gate, and evidence to capture.
 
-As the final operation, write strict JSON to `.local/state/orbit/worker-result.json`. It must contain schema version, `COMPLETED` or `BLOCKED`, item ID, source SHA-256, risk, every and only changed file, all manifest test IDs, exact command/exit/evidence records, queue state/source/entry ID, exact package changes, every sudo command, and a blocker or null. Do not start another item or session.
+As the final operation, write strict JSON to `.local/state/orbit/worker-result.json`. It must contain schema version, `COMPLETED` or `BLOCKED`, item ID, source SHA-256, risk, every and only changed file, all manifest test IDs, exact command/exit/evidence records, queue state (`NONE`, `READY_ADDED`, or `READY_UPDATED`), source/entry ID, exact package changes, every sudo command, and a blocker or null. Do not start another item or session.
 ```
 
 ## Prompt 8: Sequential Validation Approval

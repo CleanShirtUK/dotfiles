@@ -100,7 +100,7 @@ The executor's final operation is writing
 - every and only changed repository file;
 - all manifest test IDs;
 - evidence entries with exact command, exit code, and concise result;
-- queue state `NONE` or `READY_ADDED`, source reference, and entry ID;
+- queue state `NONE`, `READY_ADDED`, or `READY_UPDATED`, source reference, and entry ID;
 - every package change with manager, operation, package, resolved version,
   exact command, and result;
 - every sudo command verbatim;
@@ -118,10 +118,11 @@ remains. Each new entry contains the manifest `source_ref` and
 steps, safe reset, expected behavior, automated evidence, remaining gate,
 evidence to capture, and result state.
 
-The supervisor counts READY entries for the source before execution and after
-execution. It refuses to execute a source that is already READY and accepts
-`READY_ADDED` only when the count changes from zero to exactly one. Workers do
-not refresh or duplicate a READY source.
+The supervisor counts READY entries for the source before and after execution.
+`READY_ADDED` requires a zero-to-one transition. `READY_UPDATED` requires one
+unique entry before and after, updated in place with current evidence. An
+existing READY handoff does not block correction work when implementation is
+still partial; workers never append a duplicate.
 
 Prompt 8 consumes one READY entry at a time. The user records `PASS`,
 `PASS-WITH-NOTE`, `FAIL`, or `BLOCKED`; the approval session does not implement

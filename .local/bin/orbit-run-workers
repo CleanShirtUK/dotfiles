@@ -346,7 +346,7 @@ validate_worker_result() {
                          (.command | type == "string" and length > 0) and
                          (.exit_code | type == "number") and (.summary | type == "string")) and
         ((.queue_state | keys | sort) == ["entry_id", "source_ref", "state"]) and
-        (.queue_state.state | IN("NONE", "READY_ADDED")) and
+        (.queue_state.state | IN("NONE", "READY_ADDED", "READY_UPDATED")) and
         (.queue_state.source_ref | type == "string") and
         ((.queue_state.entry_id == null) or (.queue_state.entry_id | type == "string")) and
         (.package_changes | type == "array") and
@@ -371,7 +371,7 @@ validate_worker_result() {
         (if .status == "COMPLETED" then
             (.evidence | length > 0) and .blocker == null
          else (.blocker | type == "string" and length > 0) and .queue_state.state == "NONE" end) and
-        (if .queue_state.state == "READY_ADDED" then
+        (if (.queue_state.state | IN("READY_ADDED", "READY_UPDATED")) then
             (.queue_state.entry_id | type == "string" and length > 0)
          else .queue_state.entry_id == null end)
     ' "$result" >/dev/null || fail 1 'executor produced an invalid structured result'
@@ -425,7 +425,10 @@ verify_and_publish() {
     queue_state=$(jq -r '.queue_state.state' "$result")
     if [[ $queue_state == READY_ADDED ]]; then
         [[ $ready_before == 0 && $ready_after == 1 ]] ||
-            fail 1 "READY queue source must be newly unique (before $ready_before, after $ready_after)"
+        fail 1 "READY queue source must be newly unique (before $ready_before, after $ready_after)"
+    elif [[ $queue_state == READY_UPDATED ]]; then
+        [[ $ready_before == 1 && $ready_after == 1 ]] ||
+            fail 1 "updated READY queue source must remain uniquely represented (before $ready_before, after $ready_after)"
     else
         [[ $ready_after == "$ready_before" ]] ||
             fail 1 'validation queue changed without READY_ADDED in the result'
@@ -613,7 +616,6 @@ while ((completed < max_items)); do
             fail 3 "selection blocked: $(jq -r '.manual_reason // "unspecified"' "$manifest")"
             ;;
         MANUAL_ONLY)
-            ((ready_before == 0)) || fail 3 "refusing duplicate READY source: $source_ref"
             printf 'High-risk item %s requires a manually started Sol session.\n' "$item_id" >&2
             printf 'Start: opencode %q --agent orbit-sol-implementation --model "$ORBIT_SOL_MODEL"\n' "$ROOT" >&2
             printf 'Then: orbit-run-workers --auto --resume-sol --sol-model "$ORBIT_SOL_MODEL" --timeout %q\n' \
@@ -621,7 +623,6 @@ while ((completed < max_items)); do
             exit 3
             ;;
         READY)
-            ((ready_before == 0)) || fail 3 "refusing duplicate READY source: $source_ref"
             ;;
     esac
 

@@ -80,9 +80,10 @@ disposable fixtures; hand attended, visual, hardware, causal, and recovery
 gates to the validation queue.
 
 Run the manifest's tests and collect concrete evidence. If a manual gate
-remains, append exactly one new READY entry whose source is `source_ref` and
-which includes `source_sha256`; never refresh or duplicate an existing READY
-source.
+remains and no READY source exists, append exactly one entry containing
+`source_ref` and `source_sha256`. If exactly one READY entry already exists,
+update that entry in place with current implementation/evidence while
+preserving its history; never append a duplicate.
 
 As the final operation, write strict JSON to
 `.local/state/orbit/worker-result.json` with this shape:
@@ -110,8 +111,9 @@ As the final operation, write strict JSON to
 }
 ```
 
-The only statuses are `COMPLETED` and `BLOCKED`. `queue_state.state` is `NONE`
-or `READY_ADDED`; the latter requires one new entry ID. List every and only
+The only statuses are `COMPLETED` and `BLOCKED`. `queue_state.state` is `NONE`,
+`READY_ADDED`, or `READY_UPDATED`; the latter two require the affected entry
+ID. List every and only
 changed file, all manifest test IDs, exact test/package/sudo evidence, and a
 specific blocker when blocked. A clean structured result is mandatory and
 does not replace normal project documentation. Each package-change object has

@@ -124,6 +124,10 @@ unique entry before and after, updated in place with current evidence. An
 existing READY handoff does not block correction work when implementation is
 still partial; workers never append a duplicate.
 
+Once implementation is recorded as complete, an item with one READY handoff is
+approval-actionable, not worker-actionable. The selector leaves it for Prompt 8
+and continues to the next safe implementation item.
+
 Prompt 8 consumes one READY entry at a time. The user records `PASS`,
 `PASS-WITH-NOTE`, `FAIL`, or `BLOCKED`; the approval session does not implement
 fixes.

@@ -29,6 +29,12 @@ file or required files are listed there. Select exactly one item using Prompt
 3's ordering. The Markdown priority prose is evidence, not an execution
 instruction: only the manifest you write authorizes a worker.
 
+An item with `implementation_state: implemented`, a remaining attended,
+hardware, causal, visual, or recovery gate, and exactly one READY queue source
+is approval-actionable rather than worker-actionable. Do not select it for
+another implementation session. Leave it for Prompt 8 and continue to the next
+safe implementation item without treating that manual gate as queue-empty.
+
 Classify the item:
 
 - `low`: narrow documentation, test, or implementation work with a clear

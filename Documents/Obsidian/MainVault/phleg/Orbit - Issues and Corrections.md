@@ -482,16 +482,17 @@ Use one entry per issue. Do not bury unresolved defects in status prose.
 - Fix: Keep floating Steam surfaces on the visible non-floating Steam window's workspace, preferring the main `title == "Steam"` client and falling back to any non-floating Steam client without requiring PID equality.
 - Validation: `bash -n .config/hypr/scripts/dynamic-app-workspaces`; contract `tests/orbit/run-all` passed 30/30 (`2026-08-17T15-54-08Z-17457`); live passed 34/34 (`2026-08-17T15-54-08Z-17526`); one-minute soak passed 11/11 (`soak-2026-08-17T15-54-13Z-17455`). No Steam toast was generated because unattended network/application mutation is outside the worker safety boundary; attended controlled toast validation remains `VQ-20260817-09`.
 
-### ORB-DISPLAY-RECOVERY Display apply has no proven rollback
-- Status: Open; implementation complete, hardware validation pending
+### ORB-DISPLAY-RECOVERY Display disable/apply recovery is incomplete
+- Status: Open; correction and hardware validation required
 - Severity: High
 - Area: settings / hardware
 - Expected: Failed display apply restores the last-known-good topology.
-- Actual: Apply is sequential and rollback is not yet safety-proven.
+- Actual: Apply is sequential and rollback is not yet safety-proven. A disabled output disappears from the Settings widget because normal monitor enumeration excludes it, so it cannot be re-enabled there. The apply path also invokes legacy `hyprctl keyword monitor`, which Hyprland 0.56.1's non-legacy Lua parser rejects.
 - Evidence: `SET-003`.
 - Suspected cause: Display commands and generated topology files were updated sequentially without a transaction boundary or post-apply verification.
 - Fix: Display profile and role applies now snapshot the generated files and live Hyprland topology, verify the requested active dimensions, and restore both runtime monitors and files when any command or reload fails. Rollback failures are surfaced explicitly.
-- Validation: Deterministic synthetic failure fixture passed `SET-003`; full contract passed 34/34. Live passed 37/38 with unrelated `START-004` Alt+Tab binding failure; one-minute soak passed 10/10. No real display mutation was performed. A disposable two-monitor failed-apply/recovery check remains required.
+- Current evidence: On 2026-08-17, HDMI-A-1 was disabled intentionally. `hyprctl monitors` and Orbit Settings omitted it while `hyprctl monitors all` retained it as disabled. Legacy `hyprctl keyword monitor ...` returned `keyword can't work with non-legacy parsers. Use eval.` Manual recovery succeeded only after `hyprctl eval` supplied `disabled = false` and the saved mode, position, scale, and VRR values.
+- Validation: Deterministic synthetic failure fixture passed `SET-003`; full contract passed 34/34. Live passed 37/38 with unrelated `START-004` Alt+Tab binding failure; one-minute soak passed 10/10. Add deterministic disabled-output retention and Lua-parser command fixtures, then perform the disposable two-monitor failed-apply/recovery check.
 
 ### ORB-THEME-PROPAGATION Palette propagation is not uniformly live
 - Status: Open

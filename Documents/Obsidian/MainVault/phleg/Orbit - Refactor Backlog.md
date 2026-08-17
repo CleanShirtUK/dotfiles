@@ -9,7 +9,7 @@ tags: [orbit, refactor]
 ## Priority 1: State And Lifecycle
 
 - [x] Replace broad input handling with an allowlisted keyboard-only helper and Alt-release regression coverage; the service-scoped `input` compatibility path remains documented for future ACL replacement. Source: `ORB-INPUT-PERMISSIONS`.
-- [x] Make runtime Alt+Tab binding installation retry-aware across compositor startup transitions and fail closed before QuickShell if the binding never becomes available; fresh-login and current live/soak validation pass. Source: `ORB-STARTUP-BINDINGS`.
+- [x] Make runtime Alt+Tab binding ownership durable across compositor transitions: validate the exact trigger, supervise it for the QuickShell lifetime, reinstall it after loss, and fail closed if bounded recovery fails. The disposable transition fixture passes; current live and attended revalidation remain `VQ-20260817-18`. Source: `ORB-STARTUP-BINDINGS`.
 - [x] Centralize atomic state-file writes and advisory locking for shell visibility, XMB, and overview runtime state files; persistent configuration writers remain separately owned.
 - [x] Make overview visibility, revision, and cycle requests one state machine in the authoritative `overview-visible` state file; remove the separate cycle request file.
 - [x] Select the allowlisted `orbit-input-state` helper as the authoritative Alt-release source; remove duplicate Hyprland `bindr` release actions.

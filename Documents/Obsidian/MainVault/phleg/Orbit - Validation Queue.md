@@ -68,7 +68,7 @@ Stabilization and recovery gates precede visual and feature-completion gates. Pr
 - Status: READY
 - Source issue / test / backlog: `ORB-STARTUP-BINDINGS` / `START-004` / Priority 1 State and Lifecycle
 - Worker session date: 2026-08-17
-- Environment and prerequisites: Current Hyprland graphical session; `orbit-shell.service` active; `HYPRLAND_INSTANCE_SIGNATURE` must match `hyprctl instances`; no unsaved work. The current direct live audit found no runtime `TAB` binding despite current service and compositor state.
+- Environment and prerequisites: A fresh disposable Hyprland session containing the corrected `orbit-shell`; `orbit-shell.service` active; `HYPRLAND_INSTANCE_SIGNATURE` must match `hyprctl instances`; no unsaved work. The prior direct live audit found no runtime `TAB` binding, and this worker intentionally did not reload or alter the active session to replace that evidence.
 - Safe reset: Do not log out, reload Hyprland, or alter configuration during the observation. If Orbit is stale, stop and record `BLOCKED` rather than mutating the session before capturing evidence.
 - Exact steps:
   1. Record `date -Is`, `HYPRLAND_INSTANCE_SIGNATURE`, `hyprctl instances`, and `systemctl --user status orbit-shell.service --no-pager`.
@@ -77,11 +77,11 @@ Stabilization and recovery gates precede visual and feature-completion gates. Pr
   4. If present, perform one attended disposable Alt+Tab cycle and Alt release; if absent, do not fabricate a pass or repair it inside this validation.
   5. Capture relevant Orbit service journal lines and the final unchanged compositor signature and service state.
 - Expected: The expected runtime `TAB` trigger is present exactly once in the current compositor binding table and one attended disposable cycle completes without duplicate or stuck behavior.
-- Automated evidence: Earlier restart live 39/39 (`2026-08-17T17-24-13Z-655070`) and soak 11/11 (`soak-2026-08-17T17-24-16Z-654693`) are historical. The newer direct live audit found no `TAB` binding while the service was active and the compositor signature was current; therefore `START-004` is `OPEN`, not `PASS`.
+- Automated evidence: `orbit-shell` now supervises the exact press-only, non-repeating Alt+Tab Lua trigger and performs bounded reinstallation while QuickShell runs. A disposable fake-Hyprland transition removed the trigger after startup and observed exactly two installations; shell/Python syntax checks and the full deterministic suite pass 51/51 (`2026-08-17T21-09-55Z-2135925`). Earlier restart live 39/39 and soak 11/11 remain historical, and the later pre-correction direct audit found no `TAB` binding; therefore live `START-004` remains `OPEN`.
 - Remaining manual gate: Current binding-table observation and one attended disposable Alt+Tab/Alt-release cycle if the binding is present.
 - Evidence to capture: Full binding JSON; exact matching rows; timestamps; service status and journal; compositor signature; attended cycle observation or exact absence.
 - User decision: pending
-- Follow-up issue / note: Keep `ORB-STARTUP-BINDINGS` and `START-004` `OPEN` until current direct evidence passes. This is the only current `READY` handoff for `START-004`.
+- Follow-up issue / note: Updated in place for the durable-owner correction; keep `ORB-STARTUP-BINDINGS` and `START-004` `OPEN` until current disposable live and attended evidence passes. This remains the only current `READY` handoff for `START-004`.
 
 ### VQ-20260817-15 - START-006 - shutdown confirmation guard fresh worker handoff
 - Status: SUPERSEDED by `VQ-20260817-16`

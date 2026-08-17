@@ -286,9 +286,81 @@ def test_shell_duplicate_and_startup_readiness_contract():
     assert 'HYPRLAND_INSTANCE_SIGNATURE' in shell
     assert 'command -v hyprctl' in shell
     assert 'Orbit overview bindings were not installed; refusing to start the shell.' in shell
-    assert 'exec "$HOME/.local/bin/phleg-quickshell" --no-duplicate' in shell
-    assert shell.index('for _ in $(seq 1 30); do') < shell.index('exec "$HOME/.local/bin/phleg-quickshell"')
+    assert '"$HOME/.local/bin/phleg-quickshell" --no-duplicate' in shell
+    assert shell.index('for _ in $(seq 1 30); do') < shell.index('"$HOME/.local/bin/phleg-quickshell"')
     assert 'Orbit requires a Hyprland Wayland session environment.' in shell
+
+
+def test_runtime_overview_binding_is_restored_after_transition():
+    shell = BIN / "orbit-shell"
+    source = shell.read_text()
+    assert "binding_watchdog()" in source
+    assert "if ! bindings_ready && ! ensure_overview_bindings; then" in source
+    assert "len(tab) == 1" in source
+    assert 'tab[0].get("dispatcher") == "__lua"' in source
+
+    with tempfile.TemporaryDirectory() as directory:
+        root = Path(directory)
+        fake_bin = root / "bin"
+        fake_home = root / "home"
+        state = root / "state"
+        fake_bin.mkdir()
+        (fake_home / ".local/bin").mkdir(parents=True)
+        state.mkdir()
+
+        (fake_bin / "sleep").write_text("#!/bin/sh\nexit 0\n")
+        (fake_bin / "hyprctl").write_text(
+            "#!/bin/sh\n"
+            f"state={str(state)!r}\n"
+            "case \"${1:-} ${2:-}\" in\n"
+            "  'binds -j')\n"
+            "    calls=0; [ ! -f \"$state/bind-calls\" ] || calls=$(cat \"$state/bind-calls\")\n"
+            "    calls=$((calls + 1)); printf '%s\\n' \"$calls\" > \"$state/bind-calls\"\n"
+            "    if [ \"$calls\" -eq 2 ]; then printf '0\\n' > \"$state/present\"; fi\n"
+            "    present=0; [ ! -f \"$state/present\" ] || present=$(cat \"$state/present\")\n"
+            "    if [ \"$present\" -eq 1 ]; then\n"
+            "      printf '%s\\n' '[{\"key\":\"TAB\",\"modmask\":8,\"dispatcher\":\"__lua\",\"repeat\":false,\"release\":false}]'\n"
+            "    else printf '%s\\n' '[]'; fi\n"
+            "    ;;\n"
+            "  eval\\ *)\n"
+            "    case \"$2\" in\n"
+            "      *'hl.unbind(\"ALT + TAB\")'*) printf '0\\n' > \"$state/present\" ;;\n"
+            "      *'hl.bind(\"ALT + TAB\"'*)\n"
+            "        installs=0; [ ! -f \"$state/installs\" ] || installs=$(cat \"$state/installs\")\n"
+            "        printf '%s\\n' \"$((installs + 1))\" > \"$state/installs\"\n"
+            "        printf '1\\n' > \"$state/present\"\n"
+            "        ;;\n"
+            "    esac\n"
+            "    ;;\n"
+            "esac\n"
+        )
+        quickshell = fake_home / ".local/bin/phleg-quickshell"
+        quickshell.write_text(
+            "#!/bin/sh\n"
+            f"state={str(state)!r}\n"
+            "while [ ! -f \"$state/installs\" ] || [ \"$(cat \"$state/installs\")\" -lt 2 ]; do\n"
+            "  /usr/bin/sleep 0.01\n"
+            "done\n"
+        )
+        for executable in (fake_bin / "sleep", fake_bin / "hyprctl", quickshell):
+            executable.chmod(0o755)
+
+        result = subprocess.run(
+            [str(shell)],
+            env={
+                **os.environ,
+                "HOME": str(fake_home),
+                "PATH": f"{fake_bin}:{os.environ['PATH']}",
+                "XDG_CACHE_HOME": str(root / "cache"),
+                "WAYLAND_DISPLAY": "wayland-disposable",
+                "HYPRLAND_INSTANCE_SIGNATURE": "disposable-instance",
+            },
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        assert result.returncode == 0, result.stderr
+        assert int((state / "installs").read_text()) == 2
 
 
 def test_input_focus_contract():
@@ -360,7 +432,8 @@ def test_overview_binding_contract():
     assert 'hl.bind(\\"ALT + TAB\\", hl.dsp.exec_cmd(\\"$overview cycle\\"), { repeating = false })' in shell
     assert "for _ in $(seq 1 30)" in shell
     assert "bindings_ready()" in shell
-    assert "grep -q '^[[:space:]]*key: TAB$'" in shell
+    assert 'len(tab) == 1' in shell
+    assert 'tab[0].get("dispatcher") == "__lua"' in shell
     assert 'hl.bind(\\"Alt_L\\"' not in shell
     assert 'hl.bind(\\"Alt_R\\"' not in shell
 
@@ -1062,6 +1135,7 @@ TESTS = (
     ("STATE-012", test_settings_application_matching_has_a_narrow_owner),
     ("START-002", test_startup_contract),
     ("START-008", test_shell_duplicate_and_startup_readiness_contract),
+    ("START-004", test_runtime_overview_binding_is_restored_after_transition),
     ("INPUT-001", test_input_focus_contract),
     ("START-006", test_session_shutdown_confirmation_contract),
     ("START-007", test_application_scope_contract),

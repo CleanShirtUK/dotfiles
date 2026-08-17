@@ -9,11 +9,11 @@ tags: [orbit, status]
 
 ## Current Snapshot
 
-- Stabilization is the current priority. A direct live audit on 2026-08-17 found no runtime `TAB` binding even though `orbit-shell.service` was active and the compositor signature matched the current Hyprland instance. `START-004` is `OPEN` and requires revalidation; earlier successful binding runs are historical, not current proof.
+- Stabilization is the current priority. `orbit-shell` now supervises its exact Alt+Tab trigger for the lifetime of QuickShell and a disposable transition/reinstallation fixture passes. The latest direct live audit predates this correction and found no runtime `TAB` binding while the service was active, so `START-004` remains `OPEN` until current live and attended evidence passes.
 - Input-device authorization is `PASS`: the current udev-identity allowlist, fail-closed filtering, fresh-login service startup, and attended Alt+release behavior passed. The earlier ACL-only `OPEN` result is retained below as historical evidence of a reverted approach.
 - `START-006` implementation and current automated fixtures pass, but the real attended cancel and explicitly approved logout/re-login path remain `MANUAL` in `VQ-20260817-16`.
 - `orbit/project-manifest.json` is the canonical project and work-item source; this page is a human-readable view validated against it.
-- Process-cleanup baseline: the canonical manifest validates with zero errors or migration warnings, all 50 registered deterministic contract IDs pass, required runtime files are allowlisted for Git, and generated appearance/window-rule artifacts match their canonical settings sources. Current live validation still fails only `START-004` because no runtime `TAB` binding is present.
+- Process-cleanup baseline: the canonical manifest validates with zero errors or migration warnings, all 51 registered deterministic contract IDs pass, required runtime files are allowlisted for Git, and generated appearance/window-rule artifacts match their canonical settings sources. The last live validation still failed only `START-004`; no active-session reload was used to replace that evidence during the correction.
 
 ## Recent Implemented Boundaries
 
@@ -47,7 +47,7 @@ tags: [orbit, status]
 | Reserved XMB prototype removal | MANUAL | Implementation is recorded; current client/unit inspection remains `START-003` |
 | Input helper permissions | PASS | udev-identity allowlist, fresh-login startup, and attended Alt+Tab/Alt-release validation passed |
 | Pointer focus policy | PASS | `[input].follow_mouse = 2` is persisted in Orbit settings and read by `hyprland.lua`; contract coverage and `hyprctl getoption input:follow_mouse` both report 2 |
-| Runtime Alt+Tab binding startup | OPEN, REVALIDATION REQUIRED | Current direct live audit found no `TAB` binding despite an active service and current compositor signature; earlier fresh-login and 39/39 runs are historical. See `START-004` and `VQ-20260817-18` |
+| Runtime Alt+Tab binding startup | CORRECTED, LIVE/ATTENDED REVALIDATION REQUIRED | Lifetime supervision and disposable binding-loss recovery pass deterministically; the pre-correction direct live audit found no `TAB` binding. See `START-004` and `VQ-20260817-18` |
 | Refactor pass | IN PROGRESS | Runtime shell state writer and Settings system-action/application-matching boundaries centralized; see [[Orbit - Refactor Backlog]] |
 
 ## Definition Of Done
@@ -68,6 +68,7 @@ Orbit 1.0 is complete only when the full accepted vision in [[Orbit - Session Sc
 
 ## Current Evidence
 
+- `START-004` durable-owner correction: shell/Python syntax checks and `tests/orbit/run-all` pass 51/51 (`2026-08-17T21-09-55Z-2135925`). A disposable fake-Hyprland fixture removes the trigger after startup and observes a second installation while QuickShell remains supervised. No active compositor/session mutation occurred; live and attended evidence remain open.
 - `tests/orbit/run-all`: PASS, 50/50 registered deterministic requirements; `tests/orbit/validate-project.py`: PASS with zero errors and zero migration warnings. Evidence: `/tmp/opencode/orbit-cleanup-contract-3`.
 - `tests/orbit/run-all --live`: 53/54 passed with a current matching compositor signature. `LIVE-001`, `LIVE-002`, and `LIVE-003` passed; only `START-004` failed because Hyprland reported zero `TAB` bindings. Evidence: `/tmp/opencode/orbit-cleanup-live-final`.
 - One-minute smoke mode: PASS, 11 iterations, no failures, maximum Orbit RSS 459312 KiB (`soak-2026-08-17T18-36-58Z-1152385`). This is smoke evidence, not a release soak.

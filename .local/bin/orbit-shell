@@ -41,22 +41,87 @@ install_overview_bindings() {
 }
 
 bindings_ready() {
-    bindings="$(hyprctl binds 2>/dev/null || true)"
-    printf '%s\n' "$bindings" | grep -q '^[[:space:]]*key: TAB$'
+    hyprctl binds -j 2>/dev/null | python3 -c '
+import json
+import sys
+
+try:
+    bindings = json.load(sys.stdin)
+except (json.JSONDecodeError, TypeError):
+    raise SystemExit(1)
+
+tab = [binding for binding in bindings if str(binding.get("key", "")).upper() == "TAB"]
+legacy_release = [
+    binding
+    for binding in bindings
+    if str(binding.get("key", "")).upper() in {"ALT_L", "ALT_R"}
+    and binding.get("release")
+]
+ready = (
+    len(tab) == 1
+    and int(tab[0].get("modmask", 0)) & 8
+    and tab[0].get("dispatcher") == "__lua"
+    and not tab[0].get("repeat")
+    and not tab[0].get("release")
+    and not legacy_release
+)
+raise SystemExit(0 if ready else 1)
+'
 }
 
-bindings_ready_flag=0
-for _ in $(seq 1 60); do
-    if install_overview_bindings && bindings_ready; then
-        bindings_ready_flag=1
-        break
-    fi
-    sleep 0.5
-done
+ensure_overview_bindings() {
+    bindings_ready && return 0
+    for _ in $(seq 1 60); do
+        if install_overview_bindings && bindings_ready; then
+            return 0
+        fi
+        sleep 0.5
+    done
+    return 1
+}
 
-if [ "$bindings_ready_flag" -ne 1 ]; then
+if ! ensure_overview_bindings; then
     printf 'Orbit overview bindings were not installed; refusing to start the shell.\n' >&2
     exit 1
 fi
 
-exec "$HOME/.local/bin/phleg-quickshell" --no-duplicate --path "$HOME/.config/quickshell/orbit/shell.qml"
+shell_pid=
+watchdog_pid=
+
+cleanup() {
+    if [ -n "$watchdog_pid" ]; then
+        kill "$watchdog_pid" >/dev/null 2>&1 || true
+        wait "$watchdog_pid" 2>/dev/null || true
+    fi
+}
+
+terminate() {
+    if [ -n "$shell_pid" ]; then
+        kill "$shell_pid" >/dev/null 2>&1 || true
+    fi
+    exit 143
+}
+
+binding_watchdog() {
+    while kill -0 "$shell_pid" >/dev/null 2>&1; do
+        sleep 1
+        kill -0 "$shell_pid" >/dev/null 2>&1 || return 0
+        if ! bindings_ready && ! ensure_overview_bindings; then
+            printf 'Orbit overview bindings were lost and could not be restored; stopping the shell.\n' >&2
+            kill "$shell_pid" >/dev/null 2>&1 || true
+            return 1
+        fi
+    done
+}
+
+trap cleanup EXIT
+trap terminate HUP INT TERM
+
+"$HOME/.local/bin/phleg-quickshell" --no-duplicate --path "$HOME/.config/quickshell/orbit/shell.qml" &
+shell_pid=$!
+binding_watchdog &
+watchdog_pid=$!
+
+shell_status=0
+wait "$shell_pid" || shell_status=$?
+exit "$shell_status"

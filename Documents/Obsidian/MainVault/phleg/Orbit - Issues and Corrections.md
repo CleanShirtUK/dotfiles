@@ -529,7 +529,7 @@ Use one entry per issue. Do not bury unresolved defects in status prose.
 - Current correction: The helper requires `pyudev` and a non-empty `.config/orbit/input-devices.toml` serial allowlist, opens only matching keyboard event nodes, fails closed without the dependency or allowlist, and removes handles for disconnected devices. Fresh-login and attended Alt-release validation passed on 2026-08-17.
 
 ### ORB-STARTUP-BINDINGS Runtime Alt+Tab bindings can be lost during compositor transition
-- Status: Open
+- Status: Open; durable correction implemented, live and attended validation pending
 - Severity: Medium
 - Area: startup / shell
 - Reproduction:
@@ -540,9 +540,10 @@ Use one entry per issue. Do not bury unresolved defects in status prose.
 - Actual: After the fresh login on 2026-08-16, the shell and input services were active but `hyprctl binds` contained no Orbit `TAB`, `Alt_L`, or `Alt_R` bindings. Direct eval commands returned `ok` and restored them.
 - Evidence: Fresh-login command output; shell journal showed `Configuration Loaded` but no binding evidence. `tests/orbit/run-all --live` initially passed because it did not inspect bindings. Manual binding restoration made `START-004` pass in the current session.
 - Suspected cause: The final Hyprland `reload config-only` in the startup hook can erase bindings installed by the earlier Orbit service start.
-- Fix: Restart `orbit-shell.service` immediately after the final config reload, retain verification-aware binding retry, and assert binding presence in `START-004`.
+- Fix: Keep `orbit-shell` as the runtime binding owner for the lifetime of QuickShell. It now validates exactly one non-repeating, press-only Alt+Tab Lua trigger with no legacy Alt-release actions, watches for loss after startup, performs bounded reinstallation, and stops QuickShell so systemd can fail closed if recovery is impossible.
 - Validation: Fresh-login verification on 2026-08-17 found all three bindings present without manual restoration; `tests/orbit/run-all` PASS (14 checks), `tests/orbit/run-all --live` PASS (18 checks), and repeated attended Alt+Tab testing passed after shell reload. A fresh live check at 17:23 UTC exposed a transient missing-binding state; the worker now gives the bounded installer 60 attempts and fails closed instead of starting QuickShell without the binding. After service restart, contract 35/35 (`2026-08-17T17-24-08Z-654311`), live 39/39 (`2026-08-17T17-24-13Z-655070`), and one-minute soak 11/11 (`soak-2026-08-17T17-24-16Z-654693`) passed. No display, audio, network, Bluetooth, or session mutation was performed.
 - Current evidence: A direct live audit with the current compositor signature on 2026-08-17 found zero `TAB` bindings while `orbit-shell.service` remained active. `START-004` is open again. Determine which reload removes the runtime binding and make ownership durable before re-closing it.
+- Current correction evidence: A disposable fake-Hyprland transition removes the trigger after initial startup and confirms the running owner installs it a second time. Shell/Python syntax checks and the full deterministic suite pass 51/51 (`2026-08-17T21-09-55Z-2135925`). The active compositor and service were not reloaded or mutated; current live binding-table and attended Alt+Tab/Alt-release evidence remain `VQ-20260817-18`.
 
 ### ORB-ALT-RAPID-CYCLE Rapid Alt+Tab can issue duplicate workspace cycles
 - Status: Closed

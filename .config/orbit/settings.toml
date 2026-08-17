@@ -1,4 +1,5 @@
 [monitors.home]
+workspace = 1
 active = true
 adaptive_sync = false
 serial = "S5LMQS030242"
@@ -13,6 +14,7 @@ scale = 1
 connector = "DP-1"
 
 [monitors.gaming]
+workspace = 6
 active = true
 adaptive_sync = false
 serial = "R5LMTF198825"
@@ -29,6 +31,11 @@ palette = "catppuccin-mocha"
 
 [wallpaper]
 mode = "shader"
+
+[input]
+# Hyprland focus follows the pointer only when explicitly requested by a bind.
+# Keep this in Orbit settings so the input policy survives config regeneration.
+follow_mouse = 2
 
 [display_profiles."DP-1"]
 connector = "DP-1"
@@ -57,7 +64,7 @@ corner_radius = 10
 [appearance.transparency]
 active_opacity = 1.0
 inactive_opacity = 0.95
-shell_opacity = 0.35
+shell_opacity = 0.30
 
 [appearance.effects]
 hyprglass_enabled = true

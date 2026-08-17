@@ -27,18 +27,53 @@ export ORBIT_TEST_RUN_ID="$RUN_ID"
     printf 'run_id=%s\n' "$RUN_ID"
     printf 'mode=%s\n' "$MODE"
     printf 'root=%s\n' "$ROOT_DIR"
-    id
-    env | sort
+    printf 'uid=%s\n' "$(id -u)"
+    printf 'euid=%s\n' "$EUID"
+    printf 'git_head=%s\n' "$(git -C "$ROOT_DIR" rev-parse HEAD 2>/dev/null || printf unavailable)"
+    printf 'git_tree=%s\n' "$(git -C "$ROOT_DIR" rev-parse 'HEAD^{tree}' 2>/dev/null || printf unavailable)"
+    git_status="$(git -C "$ROOT_DIR" status --porcelain=v1 --untracked-files=all 2>/dev/null || true)"
+    if [[ -n "$git_status" ]]; then
+        printf 'git_worktree=dirty\n'
+    else
+        printf 'git_worktree=clean\n'
+    fi
+    printf 'git_status_hash=%s\n' "$(printf '%s' "$git_status" | git hash-object --stdin)"
+    printf 'git_diff_hash=%s\n' "$(git -C "$ROOT_DIR" diff --binary HEAD -- | git hash-object --stdin)"
+    printf 'git_version=%s\n' "$(git --version)"
+    printf 'python_version=%s\n' "$(python3 --version 2>&1)"
+    printf 'bash_version=%s\n' "$BASH_VERSION"
+    for variable in XDG_RUNTIME_DIR HYPRLAND_INSTANCE_SIGNATURE DBUS_SESSION_BUS_ADDRESS WAYLAND_DISPLAY; do
+        if [[ -n "${!variable:-}" ]]; then
+            printf '%s=present\n' "$variable"
+        else
+            printf '%s=absent\n' "$variable"
+        fi
+    done
+    for executable in hyprctl systemctl python3; do
+        if command -v "$executable" >/dev/null 2>&1; then
+            printf 'command_%s=present\n' "$executable"
+        else
+            printf 'command_%s=absent\n' "$executable"
+        fi
+    done
 } >"$LOG_DIR/environment.txt"
 
 status=0
+validator_status="SKIP"
+if [[ -f "$ROOT_DIR/tests/orbit/validate-project.py" ]]; then
+    validator_status="PASS"
+    python3 "$ROOT_DIR/tests/orbit/validate-project.py" >"$LOG_DIR/validate-project.stdout.log" 2>"$LOG_DIR/validate-project.stderr.log" || {
+        validator_status="FAIL"
+        status=1
+    }
+fi
 python3 "$ROOT_DIR/tests/orbit/contract/test_contract.py" >"$LOG_DIR/contract.stdout.log" 2>"$LOG_DIR/contract.stderr.log" || status=1
 
 if [[ "$MODE" == live ]]; then
     python3 "$ROOT_DIR/tests/orbit/live/test_live.py" >"$LOG_DIR/live.stdout.log" 2>"$LOG_DIR/live.stderr.log" || status=1
 fi
 
-python3 - "$LOG_DIR" "$MODE" "$status" <<'PY'
+python3 - "$LOG_DIR" "$MODE" "$status" "$validator_status" "$RUN_ID" <<'PY'
 import json
 import pathlib
 import sys
@@ -46,13 +81,16 @@ import sys
 log_dir = pathlib.Path(sys.argv[1])
 mode = sys.argv[2]
 exit_status = int(sys.argv[3])
+validator_status = sys.argv[4]
+run_id = sys.argv[5]
 results = []
 for path in sorted(log_dir.glob("*.results.json")):
     results.extend(json.loads(path.read_text()).get("tests", []))
 summary = {
-    "run_id": log_dir.name,
+    "run_id": run_id,
     "mode": mode,
     "status": "PASS" if exit_status == 0 else "FAIL",
+    "project_validator": validator_status,
     "passed": sum(item["status"] == "PASS" for item in results),
     "failed": sum(item["status"] == "FAIL" for item in results),
     "skipped": sum(item["status"] == "SKIP" for item in results),

@@ -1,0 +1,35 @@
+[palette]
+name = "Gruvbox Dark"
+appearance = "dark"
+
+[colors]
+background = "#282828"
+background_deep = "#1d2021"
+surface = "#3c3836"
+surface_elevated = "#504945"
+surface_selected = "#665c54"
+surface_highlight = "#45403d"
+selection = "#504945"
+editor = "#32302f"
+border = "#665c54"
+border_strong = "#928374"
+split = "#7c6f64"
+muted = "#928374"
+text = "#ebdbb2"
+text_muted = "#bdae93"
+accent = "#83a598"
+accent_secondary = "#d3869b"
+accent_deep = "#458588"
+red = "#fb4934"
+green = "#b8bb26"
+yellow = "#fabd2f"
+orange = "#fe8019"
+cyan = "#8ec07c"
+cyan_muted = "#8ec07c"
+ansi_black = "#1d2021"
+ansi_white = "#ebdbb2"
+accent_foreground = "#282828"
+
+[gradients]
+cava = ["#b8bb26", "#fabd2f", "#fe8019", "#fb4934", "#d3869b", "#83a598"]
+horizontal_cava = ["#fb4934", "#fe8019", "#fabd2f", "#b8bb26", "#8ec07c", "#83a598"]

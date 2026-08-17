@@ -1,0 +1,1464 @@
+#!/usr/bin/env python3
+"""Read and apply the user-facing Orbit settings contract."""
+
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import re
+import shutil
+import subprocess
+import sys
+import tempfile
+from pathlib import Path
+
+sys.path.insert(0, str(Path.home() / ".local/lib"))
+from orbit_settings_artifacts import (  # noqa: E402
+    write_appearance_artifacts as write_appearance_artifacts_file,
+    write_monitors_lua as write_monitors_lua_file,
+    write_window_rules as write_window_rules_file,
+)
+from orbit_settings_persistence import (  # noqa: E402
+    atomic_write,
+    read_json,
+    read_toml,
+    toml_value,
+)
+from orbit_settings_validation import (  # noqa: E402
+    validate_application_policies,
+    validate_appearance,
+    validate_display_profiles,
+)
+import orbit_settings_runtime  # noqa: E402
+import orbit_settings_actions  # noqa: E402
+
+
+HOME = Path.home()
+ORBIT = HOME / ".config/orbit"
+SETTINGS = ORBIT / "settings.toml"
+XMB = ORBIT / "xmb.json"
+MENU = ORBIT / "settings-menu.toml"
+APP_POLICIES = ORBIT / "app-policies.toml"
+APPLICATION_IDENTITIES = ORBIT / "application-identities.toml"
+HYPRIDLE = HOME / ".config/hypr/hypridle.conf"
+HYPRIDLE_DEFAULTS = ORBIT / "hypridle-defaults.toml"
+STATE = Path(os.environ.get("XDG_CACHE_HOME", HOME / ".cache")) / "orbit/settings-visible"
+
+
+def selected_palette() -> str:
+    return str(read_toml(SETTINGS).get("theme", {}).get("palette", "tokyo-night"))
+
+
+def appearance_settings() -> dict:
+    config = read_toml(SETTINGS)
+    appearance = config.get("appearance", {})
+    style = appearance.get("style", {})
+    transparency = appearance.get("transparency", {})
+    effects = appearance.get("effects", {})
+    animations = effects.get("animations", {})
+    return {
+        "style": {
+            "button_shape": str(style.get("button_shape", "rounded")),
+            "corner_radius": int(style.get("corner_radius", 10)),
+        },
+        "transparency": {
+            "active_opacity": float(transparency.get("active_opacity", 1.0)),
+            "inactive_opacity": float(transparency.get("inactive_opacity", 0.9)),
+            "shell_opacity": float(transparency.get("shell_opacity", 1.0)),
+        },
+        "effects": {
+            "hyprglass_enabled": bool(effects.get("hyprglass_enabled", True)),
+            "hyprglass_blur_type": str(effects.get("hyprglass_blur_type", "glass")),
+            "hyprwindowshade_enabled": bool(effects.get("hyprwindowshade_enabled", True)),
+            "animations_enabled": bool(effects.get("animations_enabled", True)),
+            "animations": {
+                group: {
+                    "enabled": bool(animations.get(group, {}).get("enabled", True)),
+                    "speed": float(animations.get(group, {}).get("speed", default)),
+                    "type": str(animations.get(group, {}).get("type", animation_type)),
+                }
+                for group, (default, animation_type) in {
+                    "global": (10.0, "default"),
+                    "windows": (2.9, "slide"),
+                    "fades": (1.5, "fade"),
+                    "layers": (3.81, "fade"),
+                    "workspaces": (2.0, "slidefadevert"),
+                    "movement": (2.85, "slide"),
+                }.items()
+            },
+        },
+    }
+
+
+def wallpaper_settings() -> dict:
+    wallpaper = read_toml(SETTINGS).get("wallpaper", {})
+    return {"mode": str(wallpaper.get("mode", "shader"))}
+
+
+def palette_previews() -> dict:
+    previews = {}
+    for path in sorted((ORBIT / "palettes").glob("*.toml")):
+        colors = read_toml(path).get("colors", {})
+        previews[path.stem] = {
+            key: str(colors.get(key, "#24283b"))
+            for key in ("background", "surface", "accent", "text")
+        }
+    return previews
+
+
+def menu() -> list[dict]:
+    return [item for item in read_toml(MENU).get("item", []) if item.get("enabled", True)]
+
+
+def monitors() -> list[dict]:
+    try:
+        result = subprocess.run(
+            ["hyprctl", "monitors", "-j"],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        value = json.loads(result.stdout)
+        return value if isinstance(value, list) else []
+    except (FileNotFoundError, subprocess.SubprocessError, json.JSONDecodeError):
+        return []
+
+
+def clients() -> list[dict]:
+    try:
+        result = subprocess.run(
+            ["hyprctl", "clients", "-j"],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        value = json.loads(result.stdout)
+        return value if isinstance(value, list) else []
+    except (FileNotFoundError, subprocess.SubprocessError, json.JSONDecodeError):
+        return []
+
+
+def capabilities() -> dict:
+    commands = ("wpctl", "nmcli", "bluetoothctl", "brightnessctl", "powerprofilesctl", "tuned-adm", "hypridle")
+    return {command: bool(shutil.which(command)) for command in commands}
+
+
+def command_output(command: list[str]) -> str:
+    try:
+        return subprocess.run(command, check=True, capture_output=True, text=True).stdout.strip()
+    except (FileNotFoundError, subprocess.SubprocessError):
+        return ""
+
+
+def parse_volume(node_id: int | str) -> dict:
+    fields = command_output(["wpctl", "get-volume", str(node_id)]).split()
+    result = {"volume": 1.0, "muted": False}
+    if fields:
+        try:
+            result["volume"] = float(fields[0])
+        except ValueError:
+            pass
+        result["muted"] = "MUTED" in fields
+    return result
+
+
+def parse_audio_status() -> dict:
+    sinks = []
+    sources = []
+    streams = []
+    section = ""
+    video_seen = False
+    for raw_line in command_output(["wpctl", "status"]).splitlines():
+        line = raw_line.strip()
+        line = re.sub(r"^[│├└─ ]+", "", line)
+        if line == "Sinks:":
+            section = "sinks"
+            continue
+        if line == "Sources:":
+            section = "video-sources" if video_seen else "sources"
+            continue
+        if line == "Streams:":
+            section = "streams"
+            continue
+        if line == "Video":
+            video_seen = True
+            section = "video"
+            continue
+        if line in {"Filters:", "Settings"}:
+            section = ""
+            continue
+
+        match = re.match(r"([* ]?)\s*(\d+)\.\s+(.+?)(?:\s+\[vol: ([0-9.]+)\])?$", line)
+        if not match or section not in {"sinks", "sources", "streams"}:
+            continue
+        default, node_id, name, volume = match.groups()
+        item = {
+            "id": int(node_id),
+            "name": name.strip(),
+            "default": default == "*",
+        }
+        if section in {"sinks", "sources"}:
+            item.update(parse_volume(node_id))
+            if volume is not None:
+                item["volume"] = float(volume)
+            (sinks if section == "sinks" else sources).append(item)
+        else:
+            if name.startswith(("input_", "output_", "monitor_")) or "<" in name:
+                continue
+            streams.append(item)
+
+    default_sink = next((item for item in sinks if item["default"]), None)
+    default_source = next((item for item in sources if item["default"]), None)
+    return {
+        "sinks": sinks,
+        "sources": sources,
+        "streams": streams,
+        "default_sink": default_sink["id"] if default_sink else None,
+        "default_source": default_source["id"] if default_source else None,
+    }
+
+
+def parse_nmcli_connections() -> list[dict]:
+    connections = []
+    output = command_output([
+        "nmcli", "-t", "--escape", "no", "-f", "NAME,TYPE,DEVICE,STATE,ACTIVE",
+        "connection", "show",
+    ])
+    for line in output.splitlines():
+        fields = line.split(":", 4)
+        fields += [""] * (5 - len(fields))
+        if fields[0]:
+            connection = {
+                "name": fields[0], "type": fields[1], "device": fields[2],
+                "state": fields[3], "active": fields[4].lower() == "yes",
+            }
+            connection["details"] = connection_details(fields[0])
+            connections.append(connection)
+    return connections
+
+
+def connection_details(name: str) -> dict:
+    fields = [
+        "connection.id", "connection.type", "connection.autoconnect", "connection.interface-name",
+        "802-11-wireless.ssid", "802-11-wireless.mode", "802-11-wireless-security.key-mgmt",
+        "ipv4.method", "ipv4.addresses", "ipv4.gateway", "ipv4.dns",
+        "ipv6.method", "ipv6.addresses", "ipv6.gateway", "ipv6.dns", "proxy.method",
+    ]
+    output = command_output([
+        "nmcli", "-t", "--escape", "no", "-g", ",".join(fields),
+        "connection", "show", name,
+    ])
+    values = output.splitlines()
+    values += [""] * (len(fields) - len(values))
+    return {
+        "id": values[0],
+        "type": values[1],
+        "autoconnect": values[2].lower() in {"yes", "true"},
+        "interface": values[3],
+        "ssid": values[4],
+        "wifi_mode": values[5],
+        "security": values[6],
+        "ipv4_method": values[7],
+        "ipv4_addresses": values[8],
+        "ipv4_gateway": values[9],
+        "ipv4_dns": values[10],
+        "ipv6_method": values[11],
+        "ipv6_addresses": values[12],
+        "ipv6_gateway": values[13],
+        "ipv6_dns": values[14],
+        "proxy_method": values[15],
+    }
+
+
+def parse_nmcli_devices() -> list[dict]:
+    devices = []
+    output = command_output([
+        "nmcli", "-t", "--escape", "no", "-f",
+        "DEVICE,TYPE,STATE,CONNECTION,CON-UUID", "device",
+    ])
+    for line in output.splitlines():
+        fields = line.split(":", 4)
+        fields += [""] * (5 - len(fields))
+        if fields[0]:
+            devices.append({
+                "device": fields[0], "type": fields[1], "state": fields[2],
+                "connection": fields[3], "uuid": fields[4],
+            })
+    return devices
+
+
+def parse_nmcli_wifi() -> list[dict]:
+    networks = []
+    output = command_output([
+        "nmcli", "-t", "--escape", "no", "-f",
+        "IN-USE,SSID,MODE,CHAN,RATE,SIGNAL,BARS,SECURITY,DEVICE",
+        "device", "wifi", "list",
+    ])
+    for line in output.splitlines():
+        fields = line.split(":", 8)
+        fields += [""] * (9 - len(fields))
+        if not fields[1]:
+            continue
+        networks.append({
+            "active": fields[0] == "*",
+            "ssid": fields[1],
+            "mode": fields[2],
+            "channel": fields[3],
+            "rate": fields[4],
+            "signal": fields[5],
+            "bars": fields[6],
+            "security": fields[7],
+            "device": fields[8],
+        })
+    return networks
+
+
+def parse_bluetooth_info(address: str) -> dict:
+    info = {"address": address, "connected": False, "paired": False, "trusted": False, "blocked": False}
+    for line in command_output(["bluetoothctl", "info", address]).splitlines():
+        key, separator, value = line.strip().partition(":")
+        if not separator:
+            continue
+        value = value.strip()
+        if key == "Name":
+            info["name"] = value
+        elif key == "Alias":
+            info["alias"] = value
+        elif key == "Connected":
+            info["connected"] = value.lower() == "yes"
+        elif key == "Paired":
+            info["paired"] = value.lower() == "yes"
+        elif key == "Trusted":
+            info["trusted"] = value.lower() == "yes"
+        elif key == "Blocked":
+            info["blocked"] = value.lower() == "yes"
+        elif key == "Icon":
+            info["icon"] = value
+        elif key == "RSSI":
+            match = re.search(r"-?\d+", value)
+            if match:
+                info["rssi"] = int(match.group(0))
+        elif key == "ServicesResolved":
+            info["services_resolved"] = value.lower() == "yes"
+        elif key == "Battery Percentage":
+            match = re.search(r"(\d+)", value)
+            if match:
+                info["battery"] = int(match.group(1))
+    return info
+
+
+def parse_bluetooth() -> dict:
+    adapter = {"powered": False, "discoverable": False, "pairable": False, "discovering": False}
+    for line in command_output(["bluetoothctl", "show"]).splitlines():
+        key, separator, value = line.strip().partition(":")
+        if not separator:
+            continue
+        value = value.strip().lower()
+        if key == "Powered":
+            adapter["powered"] = value == "yes"
+        elif key == "Discoverable":
+            adapter["discoverable"] = value == "yes"
+        elif key == "Pairable":
+            adapter["pairable"] = value == "yes"
+        elif key == "Discovering":
+            adapter["discovering"] = value == "yes"
+
+    devices = []
+    for line in command_output(["bluetoothctl", "devices"]).splitlines():
+        fields = line.split(" ", 2)
+        if len(fields) == 3 and fields[0] == "Device":
+            device = parse_bluetooth_info(fields[1])
+            device.setdefault("name", fields[2])
+            devices.append(device)
+    connected = next((item for item in devices if item.get("connected")), None)
+    return {
+        "adapter": adapter,
+        "devices": devices,
+        "address": connected["address"] if connected else "",
+        "connected": bool(connected),
+    }
+
+
+def tuned_settings() -> dict:
+    profiles = []
+    if not shutil.which("tuned-adm"):
+        return {"backend": "powerprofilesctl", "profile": "", "profiles": []}
+    for line in command_output(["tuned-adm", "list"]).splitlines():
+        match = re.match(r"\s*-\s+(.+?)\s+-\s+", line)
+        if match:
+            profiles.append(match.group(1))
+    active = command_output(["tuned-adm", "active"])
+    match = re.search(r"Current active profile:\s*(\S+)", active)
+    return {"backend": "tuned", "profile": match.group(1) if match else "", "profiles": profiles}
+
+
+def hypridle_settings() -> dict:
+    defaults_config = read_toml(HYPRIDLE_DEFAULTS).get("hypridle", {})
+    values = {
+        "enabled": True,
+        "lock_timeout": 180,
+        "suspend_timeout": 300,
+        "lock_action": str(defaults_config.get("lock_action", "loginctl lock-session")),
+        "suspend_action": str(defaults_config.get("suspend_action", "systemctl suspend")),
+    }
+    try:
+        text = HYPRIDLE.read_text()
+    except OSError:
+        return values
+    lock_match = re.search(r"listener\s*\{\s*timeout\s*=\s*(\d+)\s*\n\s*on-timeout\s*=\s*([^\n]+)", text)
+    suspend_match = re.search(r"listener\s*\{\s*timeout\s*=\s*(\d+)\s*\n\s*on-timeout\s*=\s*([^\n]+)", text[lock_match.end():] if lock_match else "")
+    if lock_match:
+        values["lock_timeout"] = int(lock_match.group(1))
+        values["lock_action"] = lock_match.group(2).strip()
+    if suspend_match:
+        values["suspend_timeout"] = int(suspend_match.group(1))
+        values["suspend_action"] = suspend_match.group(2).strip()
+    return values
+
+
+def _legacy_system_snapshot() -> dict:
+    audio_status = parse_audio_status()
+    default_sink = next((item for item in audio_status["sinks"] if item["default"]), {"volume": 1.0, "muted": False})
+    default_source = next((item for item in audio_status["sources"] if item["default"]), {"volume": 1.0, "muted": False})
+    connections = parse_nmcli_connections()
+    power = tuned_settings()
+    for line in command_output(["powerprofilesctl", "list"]).splitlines():
+        value = line.strip().lstrip("*").strip()
+        if value:
+            if value not in power["profiles"]:
+                power["profiles"].append(value)
+            if line.strip().startswith("*") and power["backend"] != "tuned":
+                power["profile"] = value
+
+    return {
+        "audio": {
+            **audio_status,
+            "volume": default_sink.get("volume", 1.0),
+            "muted": default_sink.get("muted", False),
+            "input_volume": default_source.get("volume", 1.0),
+            "input_muted": default_source.get("muted", False),
+        },
+        "network": {
+            "devices": parse_nmcli_devices(),
+            "connections": connections,
+            "connection": next((item["name"] for item in connections if item["active"]), ""),
+            "wifi_networks": parse_nmcli_wifi(),
+        },
+        "bluetooth": parse_bluetooth(),
+        "power": {**power, "hypridle": hypridle_settings()},
+    }
+
+
+def system_snapshot() -> dict:
+    """Compatibility wrapper for the dedicated read-only runtime adapter."""
+    runtime_output = orbit_settings_runtime.command_output
+    orbit_settings_runtime.command_output = command_output
+    try:
+        snapshot = orbit_settings_runtime.system_snapshot(HYPRIDLE, HYPRIDLE_DEFAULTS)
+    finally:
+        orbit_settings_runtime.command_output = runtime_output
+    snapshot["power"]["hypridle"] = hypridle_settings()
+    return snapshot
+
+
+def display_settings() -> dict:
+    configured = read_toml(SETTINGS).get("monitors", {})
+    return {
+        role: dict(configured.get(role, {}))
+        for role in ("home", "gaming")
+        if isinstance(configured.get(role, {}), dict)
+    }
+
+
+def application_policies() -> dict:
+    config = read_toml(APP_POLICIES)
+    defaults = config.get("defaults", {})
+    rules = config.get("rule", [])
+    return {
+        "defaults": {
+            "monitor_role": str(defaults.get("monitor_role", "focused")),
+            "workspace_policy": str(defaults.get("workspace_policy", "dedicated")),
+            "children": str(defaults.get("children", "inherit")),
+            "inherit_exclude": str(defaults.get("inherit_exclude", "")),
+        },
+        "rules": [
+            {
+                "id": str(rule.get("id", "")),
+                "application": str(rule.get("application", "")),
+                "name": str(rule.get("name", "")),
+                "kind": str(rule.get("kind", "simple")),
+                "match_type": str(rule.get("match_type", "class")),
+                "match_mode": str(rule.get("match_mode", "regex")),
+                "match_value": str(rule.get("match_value", "")),
+                "match_pattern": str(rule.get("match_pattern", "")),
+                "priority": int(rule.get("priority", 100)),
+                "monitor_role": str(rule.get("monitor_role", "")),
+                "workspace_policy": str(rule.get("workspace_policy", "")),
+                "children": str(rule.get("children", "")),
+                "inherit_exclude": str(rule.get("inherit_exclude", "")),
+                "floating": rule.get("floating"),
+                "no_anim": rule.get("no_anim"),
+                "no_blur": rule.get("no_blur"),
+                "no_shadow": rule.get("no_shadow"),
+                "decorate": rule.get("decorate"),
+                "center": rule.get("center"),
+                "focus_on_activate": rule.get("focus_on_activate"),
+                "no_focus": rule.get("no_focus"),
+                "fullscreen": rule.get("fullscreen"),
+                "custom_source": str(rule.get("custom_source", "")),
+            }
+            for rule in rules
+            if isinstance(rule, dict)
+        ],
+        "legacy_rules": [dict(rule) for rule in config.get("policy", []) if isinstance(rule, dict)],
+    }
+
+
+def stored_application_identities() -> dict:
+    config = read_toml(APPLICATION_IDENTITIES)
+    result = {}
+    for application, identity in config.get("application", {}).items():
+        if not isinstance(identity, dict):
+            continue
+        result[str(application)] = {
+            "classes": [str(value) for value in identity.get("classes", [])],
+            "titles": [str(value) for value in identity.get("titles", [])],
+            "confidence": str(identity.get("confidence", "observed")),
+        }
+    return result
+
+
+def application_identities() -> dict:
+    result = stored_application_identities()
+    desktop_paths = (
+        HOME / ".local/share/applications",
+        HOME / ".local/share/flatpak/exports/share/applications",
+        Path("/usr/local/share/applications"),
+        Path("/usr/share/applications"),
+        Path("/var/lib/flatpak/exports/share/applications"),
+    )
+    for directory in desktop_paths:
+        if not directory.is_dir():
+            continue
+        for path in directory.glob("*.desktop"):
+            startup_class = ""
+            try:
+                for line in path.read_text(errors="replace").splitlines():
+                    if line.startswith("StartupWMClass="):
+                        startup_class = line.split("=", 1)[1].strip()
+                        break
+            except OSError:
+                continue
+            if not startup_class:
+                continue
+            identity = result.setdefault(path.stem, {"classes": [], "titles": [], "confidence": "desktop"})
+            if startup_class not in identity["classes"]:
+                identity["classes"].append(startup_class)
+            if identity.get("confidence") not in {"confirmed", "observed"}:
+                identity["confidence"] = "desktop"
+    return result
+
+
+def display_profiles(available: list[dict]) -> list[dict]:
+    roles = display_settings()
+    stored_profiles = read_toml(SETTINGS).get("display_profiles", {})
+    profiles = []
+    for monitor in available:
+        connector = str(monitor.get("name", ""))
+        profile = {
+            "connector": connector,
+            "description": monitor.get("description", ""),
+            "make": monitor.get("make", ""),
+            "model": monitor.get("model", ""),
+            "serial": monitor.get("serial", ""),
+            "width": monitor.get("width", 0),
+            "height": monitor.get("height", 0),
+            "refresh_rate": monitor.get("refreshRate", 0),
+            "x": monitor.get("x", 0),
+            "y": monitor.get("y", 0),
+            "active": not monitor.get("disabled", False),
+            "adaptive_sync": bool(monitor.get("vrr", False)),
+            "available_modes": monitor.get("availableModes", []),
+        }
+        if isinstance(stored_profiles.get(connector), dict):
+            profile.update(stored_profiles[connector])
+        for role, config in roles.items():
+            if config.get("connector") != connector:
+                continue
+            mode = str(config.get("mode", ""))
+            if "@" in mode:
+                resolution, refresh = mode.split("@", 1)
+                profile["width"], profile["height"] = [int(value) for value in resolution.split("x", 1)]
+                profile["refresh_rate"] = float(refresh.rstrip("Hz"))
+            position = str(config.get("position", ""))
+            if "x" in position:
+                profile["x"], profile["y"] = [int(value) for value in position.split("x", 1)]
+            profile["active"] = bool(config.get("active", profile["active"]))
+            profile["adaptive_sync"] = bool(config.get("adaptive_sync", profile["adaptive_sync"]))
+        profiles.append(profile)
+    return profiles
+def snapshot() -> dict:
+    xmb = read_json(XMB, {})
+    available_monitors = monitors()
+    return {
+        "settings": {
+            "theme": {"palette": selected_palette()},
+            "appearance": appearance_settings(),
+            "wallpaper": wallpaper_settings(),
+            "shell": {"xmb_fullscreen": bool(xmb.get("fullscreen", False))},
+            "displays": display_settings(),
+        },
+        "palettes": sorted(path.stem for path in (ORBIT / "palettes").glob("*.toml")),
+        "palette_previews": palette_previews(),
+        "menu": menu(),
+        "monitors": available_monitors,
+        "display_profiles": display_profiles(available_monitors),
+        "application_policies": application_policies(),
+        "application_identities": application_identities(),
+        "clients": [
+            {
+                "address": client.get("address", ""),
+                "class": client.get("class", ""),
+                "title": client.get("title", ""),
+                "pid": client.get("pid", 0),
+                "workspace": client.get("workspace", {}).get("name", ""),
+                "floating": bool(client.get("floating", False)),
+                "xwayland": bool(client.get("xwayland", False)),
+            }
+            for client in clients()
+            if client.get("mapped") and not client.get("hidden") and client.get("class") != "org.quickshell"
+        ],
+        "capabilities": capabilities(),
+        "system": system_snapshot(),
+    }
+
+
+def changed(value: object, baseline: object, fallback: object = None) -> bool:
+    left = value if value is not None else fallback
+    right = baseline if baseline is not None else fallback
+    return json.dumps(left, sort_keys=True) != json.dumps(right, sort_keys=True)
+
+
+def update_application_policies(values: dict) -> None:
+    validate_application_policies(values)
+    defaults = values.get("defaults", {})
+    rules = values.get("rules", [])
+
+    lines = ["[defaults]"]
+    for key in ("monitor_role", "workspace_policy", "children", "inherit_exclude"):
+        lines.append(f"{key} = {toml_value(defaults.get(key, ''))}")
+    for legacy in application_policies().get("legacy_rules", []):
+        lines.extend(["", "[[policy]]"])
+        for key, value in legacy.items():
+            lines.append(f"{key} = {toml_value(value)}")
+    for rule in rules:
+        lines.extend(["", "[[rule]]"])
+        keys = (
+            "id", "application", "name", "kind", "match_type", "match_mode", "match_value",
+            "match_pattern", "priority", "monitor_role", "workspace_policy", "children",
+            "inherit_exclude", "floating", "no_anim", "no_blur", "no_shadow", "decorate",
+            "center", "focus_on_activate", "no_focus", "fullscreen", "custom_source",
+        )
+        for key in keys:
+            value = rule.get(key)
+            if value is not None and value != "":
+                lines.append(f"{key} = {toml_value(value)}")
+    atomic_write(APP_POLICIES, "\n".join(lines) + "\n")
+
+
+def update_application_identities(values: dict) -> None:
+    if not isinstance(values, dict):
+        raise ValueError("Application identities must be an object")
+    existing = stored_application_identities()
+    merged = dict(existing)
+    for application, identity in values.items():
+        if not isinstance(identity, dict):
+            continue
+        current = dict(merged.get(application, {}))
+        current["classes"] = sorted(set(current.get("classes", [])) | set(identity.get("classes", [])))
+        current["titles"] = sorted(set(current.get("titles", [])) | set(identity.get("titles", [])))
+        current["confidence"] = identity.get("confidence", current.get("confidence", "observed"))
+        merged[application] = current
+    lines = []
+    for application, identity in sorted(merged.items()):
+        if not isinstance(identity, dict):
+            continue
+        classes = sorted({str(value) for value in identity.get("classes", []) if str(value)})
+        titles = sorted({str(value) for value in identity.get("titles", []) if str(value)})
+        lines.extend([f'[application.{toml_value(application)}]'])
+        lines.append(f"classes = {toml_value(classes)}")
+        lines.append(f"titles = {toml_value(titles)}")
+        lines.append(f'confidence = {toml_value(identity.get("confidence", "observed"))}')
+        lines.append("")
+    atomic_write(APPLICATION_IDENTITIES, "\n".join(lines))
+
+
+def lua_string(value: object) -> str:
+    escaped = str(value).replace("\\", "\\\\").replace('"', '\\"').replace("\n", "\\n")
+    return f'"{escaped}"'
+
+
+def _legacy_write_window_rules(values: list[dict]) -> None:
+    lines = ["-- Generated by orbit-settings. Do not edit manually.", ""]
+    for rule in sorted(values, key=lambda item: (int(item.get("priority", 100)), str(item.get("id", "")))):
+        if rule.get("kind", "simple") == "custom":
+            lines.extend([str(rule.get("custom_source", "")), ""])
+            continue
+        match_type = str(rule.get("match_type", "class"))
+        match_value = str(rule.get("match_pattern") or rule.get("match_value", ".*"))
+        match = {"class": "class", "title": "title"}
+        if match_type in match:
+            match_text = f'{match[match_type]} = {lua_string(match_value)}'
+        else:
+            match_text = f'{match_type} = {"true" if str(rule.get("match_value", "true")).lower() == "true" else "false"}'
+        lines.extend([
+            "hl.window_rule({",
+            f'    name = {lua_string(rule.get("name", "orbit-rule"))},',
+            f"    match = {{ {match_text} }},",
+        ])
+        attributes = (
+            ("float", rule.get("floating")),
+            ("no_anim", rule.get("no_anim")),
+            ("no_blur", rule.get("no_blur")),
+            ("no_shadow", rule.get("no_shadow")),
+            ("decorate", rule.get("decorate")),
+            ("center", rule.get("center")),
+            ("focus_on_activate", rule.get("focus_on_activate")),
+            ("no_focus", rule.get("no_focus")),
+            ("fullscreen", rule.get("fullscreen")),
+        )
+        for key, value in attributes:
+            if isinstance(value, bool):
+                lines.append(f"    {key} = {'true' if value else 'false'},")
+        lines.extend(["})", ""])
+    atomic_write(HOME / ".config/hypr/orbit-window-rules.lua", "\n".join(lines))
+
+
+def update_monitor_config(values: dict) -> None:
+    text = SETTINGS.read_text() if SETTINGS.exists() else ""
+    for role, config in values.items():
+        if not isinstance(config, dict):
+            raise ValueError(f"Invalid monitor role: {role}")
+        section = f"[monitors.{role}]"
+        lines = text.splitlines()
+        start = next((index for index, line in enumerate(lines) if line.strip() == section), None)
+        if start is None:
+            if text and not text.endswith("\n"):
+                text += "\n"
+            text += f"\n{section}\n"
+            lines = text.splitlines()
+            start = len(lines) - 1
+        end = next(
+            (index for index in range(start + 1, len(lines)) if lines[index].strip().startswith("[")),
+            len(lines),
+        )
+        for key, value in config.items():
+            if key not in {"connector", "serial", "make", "model", "description", "mode", "position", "scale", "active", "adaptive_sync", "workspace"}:
+                continue
+            replacement = f"{key} = {toml_value(value)}"
+            key_index = next(
+                (index for index in range(start + 1, end) if lines[index].strip().startswith(key + " ")),
+                None,
+            )
+            if key_index is None:
+                lines.insert(start + 1, replacement)
+                start += 1
+                end += 1
+            else:
+                lines[key_index] = replacement
+        text = "\n".join(lines) + "\n"
+    atomic_write(SETTINGS, text)
+
+
+def update_display_profiles(values: list[dict]) -> None:
+    text = SETTINGS.read_text() if SETTINGS.exists() else ""
+    for profile in values:
+        connector = str(profile.get("connector", ""))
+        if not connector:
+            continue
+        section = f'[display_profiles."{connector}"]'
+        lines = text.splitlines()
+        start = next((index for index, line in enumerate(lines) if line.strip() == section), None)
+        if start is None:
+            if text and not text.endswith("\n"):
+                text += "\n"
+            text += f"\n{section}\n"
+            lines = text.splitlines()
+            start = len(lines) - 1
+        end = next(
+            (index for index in range(start + 1, len(lines)) if lines[index].strip().startswith("[")),
+            len(lines),
+        )
+        for key in ("connector", "width", "height", "refresh_rate", "x", "y", "active", "adaptive_sync"):
+            if key not in profile:
+                continue
+            replacement = f"{key} = {toml_value(profile[key])}"
+            key_index = next(
+                (index for index in range(start + 1, end) if lines[index].strip().startswith(key + " ")),
+                None,
+            )
+            if key_index is None:
+                lines.insert(start + 1, replacement)
+                start += 1
+                end += 1
+            else:
+                lines[key_index] = replacement
+        text = "\n".join(lines) + "\n"
+    atomic_write(SETTINGS, text)
+
+
+def _legacy_write_monitors_lua(profiles: list[dict]) -> None:
+    lines = ["-- Generated by orbit-settings. Do not edit manually.", ""]
+    for profile in profiles:
+        connector = str(profile.get("connector", ""))
+        if not connector:
+            continue
+        if profile.get("active", True) is False:
+            lines.extend([
+                "hl.monitor({",
+                f'    output = "{connector}",',
+                "    disabled = true",
+                "})",
+            ])
+            continue
+        mode = f'{int(profile.get("width", 0))}x{int(profile.get("height", 0))}@{float(profile.get("refresh_rate", 0)):.2f}'
+        lines.extend([
+            "hl.monitor({",
+            f'    output = "{connector}",',
+            f'    mode = "{mode}",',
+            f'    position = "{int(profile.get("x", 0))}x{int(profile.get("y", 0))}",',
+            "    scale = 1.0,",
+            f'    vrr = {1 if profile.get("adaptive_sync", False) else 0}',
+            "})",
+        ])
+    atomic_write(HOME / ".config/hypr/monitors.lua", "\n".join(lines) + "\n")
+
+
+def _display_runtime_snapshot() -> list[dict]:
+    """Capture the current topology using the read-only Hyprland query."""
+    return [dict(item) for item in monitors() if isinstance(item, dict) and item.get("name")]
+
+
+def _restore_display_runtime(snapshot: list[dict]) -> None:
+    """Restore only the topology observed before a transactional apply."""
+    for monitor in snapshot:
+        name = str(monitor["name"])
+        if monitor.get("disabled") is True or not monitor.get("width") or not monitor.get("height"):
+            command = ["hyprctl", "keyword", "monitor", f"{name},disable"]
+        else:
+            refresh = float(monitor.get("refreshRate", 0))
+            mode = f'{int(monitor["width"])}x{int(monitor["height"])}@{refresh:.2f}'
+            position = f'{int(monitor.get("x", 0))}x{int(monitor.get("y", 0))}'
+            scale = str(monitor.get("scale", 1.0))
+            command = ["hyprctl", "keyword", "monitor", f"{name},{mode},{position},{scale}"]
+        result = subprocess.run(command, check=False, capture_output=True, text=True)
+        if result.returncode != 0:
+            raise RuntimeError(result.stderr.strip() or f"Could not restore {name}")
+
+
+def _display_file_snapshot() -> dict[Path, str | None]:
+    paths = (SETTINGS, HOME / ".config/hypr/monitors.lua")
+    return {path: path.read_text() if path.exists() else None for path in paths}
+
+
+def _restore_display_files(snapshot: dict[Path, str | None]) -> None:
+    for path, content in snapshot.items():
+        if content is None:
+            path.unlink(missing_ok=True)
+        else:
+            atomic_write(path, content)
+
+
+def _transactional_display_apply(action):
+    """Run a display apply with file and runtime rollback on every failure."""
+    runtime = _display_runtime_snapshot()
+    files = _display_file_snapshot()
+    try:
+        return action()
+    except Exception as error:
+        rollback_errors = []
+        try:
+            _restore_display_files(files)
+        except Exception as rollback_error:
+            rollback_errors.append(f"files: {rollback_error}")
+        try:
+            _restore_display_runtime(runtime)
+        except Exception as rollback_error:
+            rollback_errors.append(f"runtime: {rollback_error}")
+        suffix = f"; rollback failed ({', '.join(rollback_errors)})" if rollback_errors else "; rollback restored the prior topology"
+        raise ValueError(f"Display apply failed: {error}{suffix}") from error
+
+
+def _verify_display_profiles(profiles: list[dict]) -> None:
+    observed = {item.get("name"): item for item in _display_runtime_snapshot()}
+    for profile in profiles:
+        item = observed.get(profile["connector"])
+        if profile.get("active", True) is False:
+            if item and item.get("disabled") is not True and item.get("width"):
+                raise ValueError(f"Verification failed for {profile['connector']}: still active")
+            continue
+        if not item or item.get("disabled") is True:
+            raise ValueError(f"Verification failed for {profile['connector']}: not active")
+        expected = (int(profile["width"]), int(profile["height"]))
+        actual = (int(item.get("width", 0)), int(item.get("height", 0)))
+        if actual != expected:
+            raise ValueError(f"Verification failed for {profile['connector']}: {actual} != {expected}")
+
+
+def apply_display_profile_changes(profiles: list[dict], roles: dict) -> list[str]:
+    validate_display_profiles(profiles)
+
+    def apply():
+        profiles_by_connector = {profile["connector"]: profile for profile in profiles}
+        updated_roles = {}
+        for role, config in roles.items():
+            if not isinstance(config, dict):
+                continue
+            profile = profiles_by_connector.get(config.get("connector"))
+            if not profile:
+                updated_roles[role] = config
+                continue
+            updated = dict(config)
+            updated.update({
+                "mode": f'{int(profile["width"])}x{int(profile["height"])}@{float(profile["refresh_rate"]):.2f}',
+                "position": f'{int(profile.get("x", 0))}x{int(profile.get("y", 0))}',
+                "active": bool(profile.get("active", True)),
+                "adaptive_sync": bool(profile.get("adaptive_sync", False)),
+            })
+            updated_roles[role] = updated
+
+        update_display_profiles(profiles)
+        update_monitor_config(updated_roles)
+        write_monitors_lua(profiles)
+        available = _display_runtime_snapshot()
+        applied = []
+        for profile in profiles:
+            target = profile["connector"]
+            if not any(item.get("name") == target for item in available):
+                continue
+            if profile.get("active", True) is False:
+                command = ["hyprctl", "keyword", "monitor", f"{target},disable"]
+            else:
+                mode = f'{int(profile["width"])}x{int(profile["height"])}@{float(profile["refresh_rate"]):.2f}'
+                position = f'{int(profile.get("x", 0))}x{int(profile.get("y", 0))}'
+                command = ["hyprctl", "keyword", "monitor", f"{target},{mode},{position},1"]
+            result = subprocess.run(command, check=False, capture_output=True, text=True)
+            if result.returncode != 0:
+                raise ValueError(result.stderr.strip() or f"Could not apply {target}")
+            applied.append(target)
+        _verify_display_profiles([profile for profile in profiles if profile["connector"] in applied])
+        reload_result = subprocess.run(["hyprctl", "reload", "config-only"], check=False, capture_output=True, text=True)
+        if reload_result.returncode != 0:
+            raise ValueError(reload_result.stderr.strip() or "Could not reload Hyprland configuration")
+        return applied
+
+    return _transactional_display_apply(apply)
+
+
+def _apply_display_changes_unchecked(displays: dict) -> list[str]:
+    if not isinstance(displays, dict):
+        raise ValueError("Displays settings must be an object")
+    update_monitor_config(displays)
+    available = monitors()
+    applied = []
+    for role, config in displays.items():
+        if role not in ("home", "gaming") or not isinstance(config, dict):
+            continue
+        target = str(config.get("connector", ""))
+        monitor = next((item for item in available if item.get("name") == target), None)
+        if not monitor:
+            continue
+        mode = str(config.get("mode") or "preferred")
+        position = str(config.get("position") or f"{monitor.get('x', 0)}x{monitor.get('y', 0)}")
+        scale = str(config.get("scale") or monitor.get("scale", 1.0))
+        command = ["hyprctl", "keyword", "monitor", f"{target},{mode},{position},{scale}"]
+        if subprocess.run(command, check=False, capture_output=True, text=True).returncode != 0:
+            raise ValueError(f"Could not apply {role} monitor settings")
+        applied.append(role)
+    return applied
+
+
+def apply_display_changes(displays: dict) -> list[str]:
+    if not isinstance(displays, dict):
+        raise ValueError("Displays settings must be an object")
+    return _transactional_display_apply(lambda: _apply_display_changes_unchecked(displays))
+
+
+def update_palette(name: str, custom: dict | None = None) -> None:
+    palette = ORBIT / "palettes" / f"{name}.toml"
+    if custom is not None:
+        source_name = str(custom.get("base", selected_palette()))
+        source = ORBIT / "palettes" / f"{source_name}.toml"
+        if not source.is_file() or not re.fullmatch(r"[a-z0-9][a-z0-9-]*", name):
+            raise ValueError("Invalid custom palette name")
+        config = read_toml(source)
+        colors = dict(config.get("colors", {}))
+        for key, value in custom.get("colors", {}).items():
+            if key in colors and not re.fullmatch(r"#[0-9a-fA-F]{6}", str(value)):
+                raise ValueError(f"Invalid custom palette color: {key}")
+            if key in colors:
+                colors[key] = str(value)
+        lines = ["[palette]", f'name = {toml_value(custom.get("label", name))}', f'appearance = {toml_value(config.get("palette", {}).get("appearance", "dark"))}', "", "[colors]"]
+        lines.extend(f"{key} = {toml_value(value)}" for key, value in colors.items())
+        if config.get("gradients"):
+            lines.extend(["", "[gradients]"])
+            for key, value in config["gradients"].items():
+                lines.append(f"{key} = {toml_value(value)}")
+        atomic_write(palette, "\n".join(lines) + "\n")
+    elif not palette.is_file():
+        raise ValueError(f"Unknown Orbit palette: {name}")
+
+    text = SETTINGS.read_text() if SETTINGS.exists() else ""
+    if "[theme]" in text:
+        lines = text.splitlines()
+        in_theme = False
+        replaced = False
+        output = []
+        for line in lines:
+            stripped = line.strip()
+            if stripped.startswith("["):
+                in_theme = stripped == "[theme]"
+            if in_theme and stripped.startswith("palette"):
+                output.append(f'palette = "{name}"')
+                replaced = True
+            else:
+                output.append(line)
+        text = "\n".join(output) + "\n"
+        if not replaced:
+            text = text.replace("[theme]\n", f'[theme]\npalette = "{name}"\n', 1)
+    else:
+        text = text.rstrip() + f'\n\n[theme]\npalette = "{name}"\n'
+    atomic_write(SETTINGS, text)
+
+
+def update_appearance(values: dict) -> None:
+    validate_appearance(values)
+    style = values.get("style", {})
+    transparency = values.get("transparency", {})
+    effects = values.get("effects", {})
+    radius = int(style.get("corner_radius", 10))
+    blur_type = str(effects.get("hyprglass_blur_type", "glass"))
+    animations = effects.get("animations", {})
+
+    lines = [
+        "[appearance.style]",
+        f'button_shape = {toml_value(style.get("button_shape", "rounded"))}',
+        f"corner_radius = {radius}",
+        "",
+        "[appearance.transparency]",
+        f"active_opacity = {float(transparency.get('active_opacity', 1.0))}",
+        f"inactive_opacity = {float(transparency.get('inactive_opacity', 0.9))}",
+        f"shell_opacity = {float(transparency.get('shell_opacity', 1.0))}",
+        "",
+        "[appearance.effects]",
+        f"hyprglass_enabled = {toml_value(bool(effects.get('hyprglass_enabled', True)))}",
+        f"hyprglass_blur_type = {toml_value(blur_type)}",
+        f"hyprwindowshade_enabled = {toml_value(bool(effects.get('hyprwindowshade_enabled', True)))}",
+        f"animations_enabled = {toml_value(bool(effects.get('animations_enabled', True)))}",
+    ]
+    for group in ("global", "windows", "fades", "layers", "workspaces", "movement"):
+        item = animations.get(group, {})
+        lines.extend([
+            "",
+            f"[appearance.effects.animations.{group}]",
+            f"enabled = {toml_value(bool(item.get('enabled', True)))}",
+            f"speed = {float(item.get('speed', appearance_settings()['effects']['animations'][group]['speed']))}",
+            f"type = {toml_value(item.get('type', appearance_settings()['effects']['animations'][group]['type']))}",
+        ])
+
+    text = SETTINGS.read_text() if SETTINGS.exists() else ""
+    existing = text.splitlines()
+    retained = []
+    skipping = False
+    for line in existing:
+        stripped = line.strip()
+        if stripped == "[appearance]" or stripped.startswith("[appearance."):
+            skipping = True
+            continue
+        if skipping and stripped.startswith("["):
+            skipping = False
+        if not skipping:
+            retained.append(line)
+    text = "\n".join(retained).rstrip() + "\n\n" + "\n".join(lines) + "\n"
+    atomic_write(SETTINGS, text)
+
+
+def _legacy_write_appearance_artifacts(values: dict) -> None:
+    generated = ORBIT / "generated"
+    generated.mkdir(parents=True, exist_ok=True)
+    atomic_write(generated / "appearance.json", json.dumps(values, indent=2) + "\n")
+    style = values["style"]
+    transparency = values["transparency"]
+    effects = values["effects"]
+    animations = effects["animations"]
+    lines = [
+        "-- Generated by orbit-settings. Do not edit manually.",
+        "return {",
+        f'    style = {{ button_shape = "{style["button_shape"]}", corner_radius = {int(style["corner_radius"])} }},',
+        f'    transparency = {{ active_opacity = {float(transparency["active_opacity"])}, inactive_opacity = {float(transparency["inactive_opacity"])}, shell_opacity = {float(transparency["shell_opacity"])} }},',
+        "    effects = {",
+        f'        hyprglass_enabled = {str(bool(effects["hyprglass_enabled"])) .lower()},',
+        f'        hyprglass_blur_type = "{effects["hyprglass_blur_type"]}",',
+        f'        hyprwindowshade_enabled = {str(bool(effects["hyprwindowshade_enabled"])) .lower()},',
+        f'        animations_enabled = {str(bool(effects["animations_enabled"])) .lower()},',
+        "        animations = {",
+    ]
+    for group, item in animations.items():
+        lines.append(f'            {group} = {{ enabled = {str(bool(item["enabled"])).lower()}, speed = {float(item["speed"])}, type = "{item["type"]}" }},')
+    lines.extend(["        },", "    },", "}", ""])
+    atomic_write(generated / "appearance.lua", "\n".join(lines))
+
+
+def write_window_rules(values: list[dict]) -> None:
+    """Compatibility wrapper for the dedicated artifact writer."""
+    write_window_rules_file(values, HOME / ".config/hypr/orbit-window-rules.lua")
+
+
+def write_monitors_lua(profiles: list[dict]) -> None:
+    """Compatibility wrapper for the dedicated artifact writer."""
+    write_monitors_lua_file(profiles, HOME / ".config/hypr/monitors.lua")
+
+
+def write_appearance_artifacts(values: dict) -> None:
+    """Compatibility wrapper for the dedicated artifact writer."""
+    write_appearance_artifacts_file(values, ORBIT / "generated")
+
+
+def apply_changes(payload: dict) -> dict:
+    if not isinstance(payload, dict):
+        raise ValueError("Settings payload must be an object")
+    settings = payload.get("settings", payload)
+    baseline = payload.get("baseline", {})
+    theme = settings.get("theme", {})
+    appearance = settings.get("appearance", appearance_settings())
+    shell = settings.get("shell", {})
+    system = settings.get("system", payload.get("system", {}))
+    baseline_system = baseline.get("system", {})
+    displays = settings.get("displays", {})
+    baseline_displays = baseline.get("displays", {})
+    display_profiles = settings.get("display_profiles", [])
+    baseline_display_profiles = baseline.get("display_profiles", [])
+    application_policies = settings.get("application_policies", {})
+    baseline_application_policies = baseline.get("application_policies", {})
+    application_identities = settings.get("application_identities", {})
+    baseline_application_identities = baseline.get("application_identities", {})
+    palette = str(theme.get("palette", selected_palette()))
+    fullscreen = shell.get("xmb_fullscreen", False)
+    if not isinstance(fullscreen, bool):
+        raise ValueError("shell.xmb_fullscreen must be boolean")
+
+    audio = system.get("audio", {})
+    baseline_audio = baseline_system.get("audio", {})
+    if changed(audio.get("volume"), baseline_audio.get("volume")) and isinstance(audio.get("volume"), (int, float)):
+        volume = max(0.0, min(1.5, float(audio["volume"])))
+        if subprocess.run(["wpctl", "set-volume", "@DEFAULT_AUDIO_SINK@", str(volume)], check=False).returncode != 0:
+            raise ValueError("Could not set the default audio volume")
+    if changed(audio.get("muted"), baseline_audio.get("muted")) and isinstance(audio.get("muted"), bool):
+        state = "1" if audio["muted"] else "0"
+        if subprocess.run(["wpctl", "set-mute", "@DEFAULT_AUDIO_SINK@", state], check=False).returncode != 0:
+            raise ValueError("Could not set the default audio mute state")
+
+    network_name = str(system.get("network", {}).get("connection", "")) if changed(system.get("network", {}), baseline_system.get("network", {})) else ""
+    if network_name:
+        if subprocess.run(["nmcli", "connection", "up", "id", network_name], check=False).returncode != 0:
+            raise ValueError(f"Could not activate network connection: {network_name}")
+
+    bluetooth = system.get("bluetooth", {}) if changed(system.get("bluetooth", {}), baseline_system.get("bluetooth", {})) else {}
+    address = str(bluetooth.get("address", ""))
+    if address and bluetooth.get("connected") is True:
+        if subprocess.run(["bluetoothctl", "connect", address], check=False).returncode != 0:
+            raise ValueError(f"Could not connect Bluetooth device: {address}")
+    elif address and bluetooth.get("connected") is False:
+        if subprocess.run(["bluetoothctl", "disconnect", address], check=False).returncode != 0:
+            raise ValueError(f"Could not disconnect Bluetooth device: {address}")
+
+    power = system.get("power", {})
+    baseline_power = baseline_system.get("power", {})
+    if changed(power, baseline_power):
+        profile = str(power.get("profile", ""))
+        previous_profile = str(baseline_power.get("profile", ""))
+        if profile and profile != previous_profile:
+            backend = str(power.get("backend", baseline_power.get("backend", "powerprofilesctl")))
+            command = ["tuned-adm", "profile", profile] if backend == "tuned" else ["powerprofilesctl", "set", profile]
+            if subprocess.run(command, check=False).returncode != 0:
+                raise ValueError(f"Could not set power profile: {profile}")
+        hypridle = power.get("hypridle", {})
+        if changed(hypridle, baseline_power.get("hypridle", {})):
+            write_hypridle(hypridle)
+
+    reloads = []
+    if changed(theme, baseline.get("theme", {})):
+        update_palette(palette, theme.get("custom"))
+        theme_command = HOME / ".local/bin/orbit-theme"
+        result = subprocess.run([str(theme_command), "apply", palette], capture_output=True, text=True)
+        if result.returncode != 0:
+            raise ValueError(result.stderr.strip() or "Could not generate theme artifacts")
+        reloads.append("theme")
+
+    if changed(appearance, baseline.get("appearance", appearance_settings())):
+        update_appearance(appearance)
+        write_appearance_artifacts(appearance)
+        reload_result = subprocess.run(["hyprctl", "reload", "config-only"], check=False, capture_output=True, text=True)
+        if reload_result.returncode != 0:
+            raise ValueError(reload_result.stderr.strip() or "Could not reload appearance settings")
+        reloads.append("appearance")
+
+    if changed(shell, baseline.get("shell", {})):
+        xmb = read_json(XMB, {})
+        xmb["fullscreen"] = fullscreen
+        atomic_write(XMB, json.dumps(xmb, indent=2) + "\n")
+        reloads.append("shell")
+
+    applied_displays = []
+    if changed(displays, baseline_displays):
+        applied_displays = apply_display_changes(displays)
+    if changed(display_profiles, baseline_display_profiles):
+        applied_displays = apply_display_profile_changes(display_profiles, displays)
+
+    if changed(application_policies, baseline_application_policies):
+        update_application_policies(application_policies)
+        write_window_rules(application_policies.get("rules", []))
+        reload_result = subprocess.run(["hyprctl", "reload", "config-only"], check=False, capture_output=True, text=True)
+        if reload_result.returncode != 0:
+            raise ValueError(reload_result.stderr.strip() or "Could not reload Hyprland window rules")
+        reloads.append("window-rules")
+    if changed(application_identities, baseline_application_identities):
+        update_application_identities(application_identities)
+
+    return {"ok": True, "reload": reloads, "displays": applied_displays, "restart": []}
+
+
+def write_hypridle(values: dict) -> None:
+    """Compatibility wrapper for the dedicated mutating action boundary."""
+    orbit_settings_actions.write_hypridle(values, HYPRIDLE, hypridle_settings())
+    return
+    enabled = bool(values.get("enabled", True))
+    lock_timeout = int(values.get("lock_timeout", 180))
+    suspend_timeout = int(values.get("suspend_timeout", 300))
+    lock_action = str(values.get("lock_action", hypridle_settings()["lock_action"])).strip()
+    suspend_action = str(values.get("suspend_action", hypridle_settings()["suspend_action"])).strip()
+    if lock_timeout < 0 or suspend_timeout < 0 or not lock_action or not suspend_action:
+        raise ValueError("Hypridle timeouts cannot be negative")
+    lines = [
+        "general {",
+        "    lock_cmd = ~/.config/hypr/scripts/start-hyprlock",
+        "    after_sleep_cmd = ~/.config/hypr/scripts/restore-dpms",
+        "}",
+        "",
+    ]
+    if lock_timeout:
+        lines.extend([
+            "listener {",
+            f"    timeout = {lock_timeout}",
+            f"    on-timeout = {lock_action}",
+            "}",
+            "",
+        ])
+    if suspend_timeout:
+        lines.extend([
+            "listener {",
+            f"    timeout = {suspend_timeout}",
+            f"    on-timeout = {suspend_action}",
+            "}",
+            "",
+        ])
+    atomic_write(HYPRIDLE, "\n".join(lines))
+    service_action = "start" if enabled else "stop"
+    result = subprocess.run(["systemctl", "--user", service_action, "hypridle.service"], check=False, capture_output=True, text=True)
+    if result.returncode != 0:
+        raise ValueError(result.stderr.strip() or f"Could not {service_action} hypridle")
+    if enabled:
+        result = subprocess.run(["systemctl", "--user", "restart", "hypridle.service"], check=False, capture_output=True, text=True)
+        if result.returncode != 0:
+            raise ValueError(result.stderr.strip() or "Could not restart hypridle")
+
+
+def run_system_action(action: str, payload: dict) -> dict:
+    """Apply transient device changes without touching persisted Orbit settings."""
+    return orbit_settings_actions.run_system_action(
+        action,
+        payload,
+        hypridle_path=HYPRIDLE,
+        hypridle_current=hypridle_settings(),
+    )
+    # Kept below as historical context until the next cleanup pass; the
+    # executable boundary above is authoritative.
+    payload = payload if isinstance(payload, dict) else {}
+    if action == "tuned-profile":
+        profile = str(payload.get("profile", "")).strip()
+        if not profile or not shutil.which("tuned-adm"):
+            raise ValueError("A valid Tuned profile is required")
+        result = subprocess.run(["tuned-adm", "profile", profile], check=False, capture_output=True, text=True)
+        if result.returncode != 0:
+            raise ValueError(result.stderr.strip() or result.stdout.strip() or f"Could not set Tuned profile: {profile}")
+        return {"ok": True, "action": action}
+    if action == "hypridle-save":
+        write_hypridle(payload)
+        return {"ok": True, "action": action}
+    if action == "network-profile-save":
+        name = str(payload.get("name", "")).strip()
+        values = payload.get("values", {})
+        if not name or not isinstance(values, dict):
+            raise ValueError("A connection name and profile values are required")
+        allowed = {
+            "autoconnect": "connection.autoconnect",
+            "interface": "connection.interface-name",
+            "ssid": "802-11-wireless.ssid",
+            "wifi_mode": "802-11-wireless.mode",
+            "security": "802-11-wireless-security.key-mgmt",
+            "password": "802-11-wireless-security.psk",
+            "ipv4_method": "ipv4.method",
+            "ipv4_addresses": "ipv4.addresses",
+            "ipv4_gateway": "ipv4.gateway",
+            "ipv4_dns": "ipv4.dns",
+            "ipv6_method": "ipv6.method",
+            "ipv6_addresses": "ipv6.addresses",
+            "ipv6_gateway": "ipv6.gateway",
+            "ipv6_dns": "ipv6.dns",
+            "proxy_method": "proxy.method",
+        }
+        command = ["nmcli", "connection", "modify", name]
+        for key, nm_key in allowed.items():
+            if key not in values:
+                continue
+            value = values[key]
+            if key == "autoconnect":
+                value = "yes" if value else "no"
+            command.extend([nm_key, str(value)])
+        if len(command) == 4:
+            raise ValueError("No editable profile values were supplied")
+        result = subprocess.run(command, check=False, capture_output=True, text=True)
+        if result.returncode != 0:
+            raise ValueError(result.stderr.strip() or result.stdout.strip() or "Could not save connection profile")
+        return {"ok": True, "action": action}
+    if action == "network-profile-add":
+        name = str(payload.get("name", "")).strip()
+        profile_type = str(payload.get("type", "wifi"))
+        if not name or profile_type not in {"wifi", "ethernet"}:
+            raise ValueError("A valid profile name and type are required")
+        if profile_type == "wifi":
+            ssid = str(payload.get("ssid", "")).strip()
+            if not ssid:
+                raise ValueError("A Wi-Fi profile needs an SSID")
+            command = ["nmcli", "connection", "add", "type", "wifi", "ifname", "*", "con-name", name, "ssid", ssid]
+        else:
+            command = ["nmcli", "connection", "add", "type", "ethernet", "ifname", "*", "con-name", name]
+        result = subprocess.run(command, check=False, capture_output=True, text=True)
+        if result.returncode != 0:
+            raise ValueError(result.stderr.strip() or result.stdout.strip() or "Could not create connection profile")
+        return {"ok": True, "action": action}
+    if action == "network-profile-delete":
+        name = str(payload.get("name", "")).strip()
+        if not name:
+            raise ValueError("A connection name is required")
+        result = subprocess.run(["nmcli", "connection", "delete", "id", name], check=False, capture_output=True, text=True)
+        if result.returncode != 0:
+            raise ValueError(result.stderr.strip() or result.stdout.strip() or "Could not delete connection profile")
+        return {"ok": True, "action": action}
+    if action == "network-wifi-scan":
+        result = subprocess.run(["nmcli", "device", "wifi", "rescan"], check=False, capture_output=True, text=True)
+        if result.returncode != 0:
+            raise ValueError(result.stderr.strip() or result.stdout.strip() or "Could not scan for Wi-Fi networks")
+        return {"ok": True, "action": action}
+    if action == "network-wifi-connect":
+        ssid = str(payload.get("ssid", "")).strip()
+        password = str(payload.get("password", ""))
+        device = str(payload.get("device", "")).strip()
+        if not ssid:
+            raise ValueError("A Wi-Fi SSID is required")
+        command = ["nmcli", "device", "wifi", "connect", ssid]
+        if password:
+            command.extend(["password", password])
+        if device:
+            command.extend(["ifname", device])
+        result = subprocess.run(command, check=False, capture_output=True, text=True)
+        if result.returncode != 0:
+            raise ValueError(result.stderr.strip() or result.stdout.strip() or f"Could not connect to Wi-Fi network: {ssid}")
+        return {"ok": True, "action": action}
+    if action in {"bluetooth-pair", "bluetooth-trust", "bluetooth-untrust", "bluetooth-block", "bluetooth-unblock", "bluetooth-remove"}:
+        address = str(payload.get("address", "")).strip()
+        if not address:
+            raise ValueError("A Bluetooth device address is required")
+        command_name = {
+            "bluetooth-pair": "pair",
+            "bluetooth-trust": "trust",
+            "bluetooth-untrust": "untrust",
+            "bluetooth-block": "block",
+            "bluetooth-unblock": "unblock",
+            "bluetooth-remove": "remove",
+        }[action]
+        result = subprocess.run(["bluetoothctl", command_name, address], check=False, capture_output=True, text=True)
+        if result.returncode != 0:
+            raise ValueError(result.stderr.strip() or result.stdout.strip() or f"Bluetooth action failed: {action}")
+        return {"ok": True, "action": action}
+    if action in {"bluetooth-pairable", "bluetooth-discoverable"}:
+        command_name = "pairable" if action == "bluetooth-pairable" else "discoverable"
+        value = "yes" if payload.get("enabled") else "no"
+        result = subprocess.run(["bluetoothctl", command_name, value], check=False, capture_output=True, text=True)
+        if result.returncode != 0:
+            raise ValueError(result.stderr.strip() or result.stdout.strip() or f"Bluetooth adapter action failed: {action}")
+        return {"ok": True, "action": action}
+
+    commands = {
+        "audio-volume": ["wpctl", "set-volume", str(payload.get("id", "@DEFAULT_AUDIO_SINK@")), str(float(payload.get("volume", 1.0)))],
+        "audio-mute": ["wpctl", "set-mute", str(payload.get("id", "@DEFAULT_AUDIO_SINK@")), "1" if payload.get("muted") else "0"],
+        "audio-default": ["wpctl", "set-default", str(payload.get("id", ""))],
+        "network-up": ["nmcli", "connection", "up", "id", str(payload.get("name", ""))],
+        "network-down": ["nmcli", "connection", "down", "id", str(payload.get("name", ""))],
+        "bluetooth-connect": ["bluetoothctl", "connect", str(payload.get("address", ""))],
+        "bluetooth-disconnect": ["bluetoothctl", "disconnect", str(payload.get("address", ""))],
+        "bluetooth-power": ["bluetoothctl", "power", "on" if payload.get("powered") else "off"],
+        "bluetooth-scan": ["bluetoothctl", "scan", "on" if payload.get("discovering") else "off"],
+        "bluetooth-trust": ["bluetoothctl", "trust", str(payload.get("address", ""))],
+        "bluetooth-remove": ["bluetoothctl", "remove", str(payload.get("address", ""))],
+    }
+    if action == "audio-input-volume":
+        commands[action] = ["wpctl", "set-volume", str(payload.get("id", "@DEFAULT_AUDIO_SOURCE@")), str(float(payload.get("volume", 1.0)))]
+    elif action == "audio-input-mute":
+        commands[action] = ["wpctl", "set-mute", str(payload.get("id", "@DEFAULT_AUDIO_SOURCE@")), "1" if payload.get("muted") else "0"]
+
+    command = commands.get(action)
+    if not command or any(not value for value in command[1:]):
+        raise ValueError(f"Invalid system action: {action}")
+    result = subprocess.run(command, check=False, capture_output=True, text=True)
+    if result.returncode != 0:
+        raise ValueError(result.stderr.strip() or result.stdout.strip() or f"System action failed: {action}")
+    return {"ok": True, "action": action}
+
+
+def set_visible(value: bool) -> None:
+    atomic_write(STATE, "1\n" if value else "0\n")
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(prog="orbit-settings")
+    subparsers = parser.add_subparsers(dest="command", required=True)
+    subparsers.add_parser("snapshot")
+    apply_parser = subparsers.add_parser("apply")
+    apply_parser.add_argument("payload")
+    action_parser = subparsers.add_parser("action")
+    action_parser.add_argument("name")
+    action_parser.add_argument("payload", nargs="?", default="{}")
+    open_parser = subparsers.add_parser("open")
+    open_parser.set_defaults(value=True)
+    close_parser = subparsers.add_parser("close")
+    close_parser.set_defaults(value=False)
+    args = parser.parse_args()
+
+    try:
+        if args.command == "snapshot":
+            print(json.dumps(snapshot()))
+        elif args.command == "apply":
+            print(json.dumps(apply_changes(json.loads(args.payload))))
+        elif args.command == "action":
+            print(json.dumps(run_system_action(args.name, json.loads(args.payload))))
+        else:
+            set_visible(args.value)
+    except (OSError, ValueError, tomllib.TOMLDecodeError, json.JSONDecodeError) as error:
+        print(json.dumps({"ok": False, "error": str(error)}))
+        raise SystemExit(1)
+
+
+if __name__ == "__main__":
+    main()

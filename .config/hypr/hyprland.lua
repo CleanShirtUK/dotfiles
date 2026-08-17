@@ -19,6 +19,29 @@ local hyprGlassPlugin = home .. "/.local/share/hyprland/plugins/hyprglass.so"
 local hyprWindowShadePlugin = home .. "/.local/share/hyprland/plugins/HyprWindowShade.so"
 local orbitAppearance = dofile(home .. "/.config/orbit/generated/appearance.lua")
 
+local function orbit_follow_mouse()
+    local settings = io.open(home .. "/.config/orbit/settings.toml", "r")
+    if not settings then return 1 end
+    local in_input = false
+    for line in settings:lines() do
+        local section = line:match("^%s*%[([^]]+)%]")
+        if section then
+            in_input = section == "input"
+        elseif in_input then
+            local value = line:match("^%s*follow_mouse%s*=%s*(%d+)")
+            if value then
+                settings:close()
+                value = tonumber(value)
+                return value >= 0 and value <= 2 and value or 1
+            end
+        end
+    end
+    settings:close()
+    return 1
+end
+
+local orbitFollowMouse = orbit_follow_mouse()
+
 local function animation_style(kind, fallback)
     if kind == "default" or kind == nil then return fallback end
     if kind == "slidefadevert" then return "slidefadevert -100%" end
@@ -101,7 +124,7 @@ hl.config({
 
     input = {
         kb_layout = "us",
---	follow_mouse = 2,
+        follow_mouse = orbitFollowMouse,
         mouse_refocus = false,
         sensitivity = 0,
         touchpad = { natural_scroll = false },

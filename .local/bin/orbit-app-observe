@@ -36,9 +36,13 @@ def write_identities(value: dict) -> None:
     for application, identity in sorted(value.items()):
         classes = sorted(set(identity.get("classes", [])))
         titles = sorted(set(identity.get("titles", [])))
+        addresses = sorted(set(identity.get("addresses", [])))
+        pids = sorted(set(identity.get("pids", [])))
         lines.append(f"[application.{toml_string(application)}]")
         lines.append("classes = [" + ", ".join(toml_string(item) for item in classes) + "]")
         lines.append("titles = [" + ", ".join(toml_string(item) for item in titles) + "]")
+        lines.append("addresses = [" + ", ".join(toml_string(item) for item in addresses) + "]")
+        lines.append("pids = [" + ", ".join(toml_string(item) for item in pids) + "]")
         lines.append(f"confidence = {toml_string(identity.get('confidence', 'observed'))}")
         lines.append("")
     IDENTITIES.parent.mkdir(parents=True, exist_ok=True)
@@ -48,13 +52,13 @@ def write_identities(value: dict) -> None:
     os.replace(temporary, IDENTITIES)
 
 
-def record_launch(desktop: str, command: str) -> None:
+def record_launch(desktop: str, command: str, launch_id: str) -> None:
     RUNTIME.mkdir(parents=True, exist_ok=True)
     with PENDING.open("a") as stream:
-        stream.write(json.dumps({"desktop": desktop, "command": command, "time": time.time()}) + "\n")
+        stream.write(json.dumps({"id": launch_id, "desktop": desktop, "command": command, "time": time.time()}) + "\n")
 
 
-def match_window(app_class: str, title: str) -> None:
+def match_window(app_class: str, title: str, launch_id: str, address: str, pid: str) -> None:
     try:
         records = [json.loads(line) for line in PENDING.read_text().splitlines() if line.strip()]
     except FileNotFoundError:
@@ -64,15 +68,24 @@ def match_window(app_class: str, title: str) -> None:
     if not usable:
         PENDING.unlink(missing_ok=True)
         return
-    record = usable[-1]
+    candidates = [record for record in usable if not launch_id or record.get("id") == launch_id]
+    if not candidates:
+        return
+    record = candidates[0] if launch_id else candidates[-1]
     identities = load_identities()
     identity = identities.setdefault(record["desktop"], {"classes": [], "titles": [], "confidence": "observed"})
     identity.setdefault("classes", [])
     identity.setdefault("titles", [])
+    identity.setdefault("addresses", [])
+    identity.setdefault("pids", [])
     if app_class and app_class not in identity["classes"]:
         identity["classes"].append(app_class)
     if title and title not in identity["titles"]:
         identity["titles"].append(title)
+    if address and address not in identity["addresses"]:
+        identity["addresses"].append(address)
+    if pid and pid not in identity["pids"]:
+        identity["pids"].append(pid)
     write_identities(identities)
     remaining = [item for item in records if item is not record]
     if remaining:
@@ -87,14 +100,19 @@ def main() -> None:
     launch = subparsers.add_parser("launch")
     launch.add_argument("--desktop", required=True)
     launch.add_argument("--command", dest="exec_command", default="")
+    launch.add_argument("--launch-id", default="")
     match = subparsers.add_parser("match")
     match.add_argument("--class", dest="app_class", required=True)
     match.add_argument("--title", default="")
+    match.add_argument("--launch-id", default="")
+    match.add_argument("--address", default="")
+    match.add_argument("--pid", default="")
     args = parser.parse_args()
     if args.command == "launch":
-        record_launch(args.desktop, args.exec_command)
+        launch_id = args.launch_id or f"launch-{time.time_ns()}"
+        record_launch(args.desktop, args.exec_command, launch_id)
     else:
-        match_window(args.app_class, args.title)
+        match_window(args.app_class, args.title, args.launch_id, args.address, args.pid)
 
 
 if __name__ == "__main__":

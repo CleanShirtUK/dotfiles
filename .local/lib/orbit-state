@@ -1,0 +1,19 @@
+#!/bin/sh
+
+# Shared atomic state-file primitives for Orbit shell state helpers.
+
+orbit_state_lock() {
+    orbit_state_lock_file=$1
+    exec 9>"$orbit_state_lock_file"
+    flock -x 9
+}
+
+orbit_state_write() {
+    orbit_state_file=$1
+    orbit_state_value=$2
+    orbit_state_temporary=$(mktemp "${orbit_state_file}.tmp.XXXXXX")
+    trap 'rm -f "$orbit_state_temporary"' EXIT HUP INT TERM
+    printf '%s\n' "$orbit_state_value" > "$orbit_state_temporary"
+    mv -f "$orbit_state_temporary" "$orbit_state_file"
+    trap - EXIT HUP INT TERM
+}

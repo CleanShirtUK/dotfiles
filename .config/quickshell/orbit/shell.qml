@@ -11,13 +11,20 @@ ShellRoot {
     readonly property string home: Quickshell.env("HOME")
 
     Theme { id: theme }
-    MonitorModel { id: monitorModel }
-    WindowModel { id: windowModel }
-    SettingsModel { id: settingsModel }
+    HyprlandModel { id: hyprlandModel }
+    MonitorModel { id: monitorModel; snapshot: hyprlandModel }
+    WindowModel { id: windowModel; snapshot: hyprlandModel }
+    ApplicationMenuModel {
+        id: applicationMenuModel
+        windowModel: windowModel
+        monitorModel: monitorModel
+    }
+    SettingsModel { id: settingsModel; snapshot: hyprlandModel }
     OverviewModel {
         id: overviewModel
         windowModel: windowModel
         monitorModel: monitorModel
+        snapshot: hyprlandModel
     }
 
     IpcHandler {
@@ -54,15 +61,37 @@ ShellRoot {
                 settingsModel.open()
         }
     }
-    XmbModel { id: xmbModel }
+    XmbModel { id: xmbModel; monitorModel: monitorModel }
     ApplicationModel {
         id: applicationModel
         windowModel: windowModel
+        monitorModel: monitorModel
     }
 
     property bool xmbVisible: false
     property bool shellVisible: true
+    property bool dockMorphing: false
+    property bool dockHandoff: false
+    property real dockMorphProgress: 0
     property int categoryRailIndex: 0
+
+    Connections {
+        target: applicationModel
+        function onLauncherActivated() {
+            root.startDockMorph()
+        }
+    }
+
+    NumberAnimation {
+        id: dockMorphProgressAnimation
+        target: root
+        property: "dockMorphProgress"
+        from: 0
+        to: 1
+        duration: 360
+        easing.type: Easing.InOutCubic
+        onFinished: root.finishDockMorph()
+    }
 
     FileView {
         id: xmbStateFile
@@ -107,7 +136,38 @@ ShellRoot {
         Quickshell.execDetached([root.home + "/.local/bin/orbit-xmb", "close"])
     }
 
-    onXmbVisibleChanged: if (!xmbVisible) xmbModel.query = ""
+    function startDockMorph() {
+        if (root.dockMorphing || root.xmbVisible)
+            return
+        root.dockMorphing = true
+        root.dockHandoff = false
+        root.dockMorphProgress = 0
+        Quickshell.execDetached([root.home + "/.local/bin/orbit-xmb", "open"])
+    }
+
+    function startDockMorphAnimation() {
+        dockMorphProgressAnimation.restart()
+    }
+
+    function finishDockMorph() {
+        if (!root.dockMorphing || root.dockHandoff)
+            return
+        root.dockHandoff = true
+        // The launcher surface is ready at the handoff boundary. Release the
+        // morphing state so the layer-shell window can claim exclusive
+        // keyboard focus, matching the keybind-open path.
+        root.dockMorphing = false
+    }
+
+    onXmbVisibleChanged: {
+        if (xmbVisible)
+            return
+        xmbModel.query = ""
+        dockMorphProgressAnimation.stop()
+        dockMorphing = false
+        dockHandoff = false
+        dockMorphProgress = 0
+    }
 
     Variants {
         model: Quickshell.screens
@@ -206,27 +266,34 @@ ShellRoot {
 
                 Rectangle {
                     id: dockBackground
+                    property real morphRevealProgress: Math.max(0, Math.min(1, (root.dockMorphProgress - 0.08) / 0.28))
                     width: dockContent.implicitWidth + 20
                     height: 58
                     anchors.horizontalCenter: parent.horizontalCenter
                     anchors.bottom: parent.bottom
                     anchors.bottomMargin: 8
-                    color: Qt.alpha(theme.colors.window_background || "#1a1b26", 0.94)
+                     color: Qt.alpha(theme.colors.window_background || "#1a1b26", theme.shellOpacity)
                     border.color: theme.colors.border || "#3d4355"
                     border.width: 1
                     radius: 16
+                    opacity: root.dockMorphing ? 1 - morphRevealProgress : 1
+                    Behavior on opacity { NumberAnimation { duration: 120; easing.type: Easing.OutCubic } }
                 }
 
                 Row {
                     id: dockContent
+                    property real morphRevealProgress: Math.max(0, Math.min(1, (root.dockMorphProgress - 0.08) / 0.28))
                     anchors.horizontalCenter: parent.horizontalCenter
                     anchors.bottom: parent.bottom
                     anchors.bottomMargin: 19
                     height: 36
                     spacing: 0
                     z: 1
-                    property real hoverPointerX: -1
-                    property real hoverAmount: 0
+                    opacity: root.dockMorphing ? 1 - morphRevealProgress : 1
+                    Behavior on opacity { NumberAnimation { duration: 120; easing.type: Easing.OutCubic } }
+                     property real hoverPointerX: -1
+                     property real hoverAmount: 0
+                     Behavior on hoverAmount { NumberAnimation { duration: 140; easing.type: Easing.OutCubic } }
 
                     function scaleAt(center) {
                         if (hoverPointerX < 0)
@@ -341,7 +408,7 @@ ShellRoot {
                  }
              }
          }
-     }
+      }
 
       Variants {
         model: Quickshell.screens
@@ -351,7 +418,7 @@ ShellRoot {
             required property var modelData
             screen: modelData
             WlrLayershell.layer: WlrLayer.Overlay
-            WlrLayershell.keyboardFocus: root.xmbVisible && monitorModel.focusedName === modelData.name ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
+            WlrLayershell.keyboardFocus: root.xmbVisible && !root.dockMorphing && monitorModel.focusedName === modelData.name ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
             visible: root.xmbVisible && monitorModel.focusedName === modelData.name
             anchors {
                 top: true
@@ -361,7 +428,9 @@ ShellRoot {
             }
             color: "transparent"
 
-             onVisibleChanged: if (visible) {
+            onVisibleChanged: if (visible) {
+                 if (root.dockMorphing && !root.dockHandoff)
+                     root.startDockMorphAnimation()
                  xmbModel.category = xmbModel.categories.indexOf("All") >= 0 ? "All" : (xmbModel.categories[0] || "")
                  root.categoryRailIndex = xmbModel.categories.length * 4 + Math.max(0, xmbModel.categories.indexOf(xmbModel.category))
                  Qt.callLater(function() {
@@ -480,10 +549,66 @@ ShellRoot {
                          xmb.closeLocalXmb()
                          event.accepted = true
                      }
-                 }
+                  }
 
-                 Rectangle {
-                     Rectangle {
+                  Item {
+                      id: dockMorphSurface
+                      anchors.fill: parent
+                       // Keep the morph background alive through the handoff. The
+                       // launcher surface is created by the same layer-shell window,
+                       // so removing this surface at the exact handoff boundary can
+                       // expose one compositor frame of transparent background.
+                       visible: root.dockMorphing
+                      z: 5
+
+                      Rectangle {
+                          id: morphSurface
+                          property real morphProgress: root.dockMorphProgress
+                          property real startWidth: applicationModel.items().length * 36 + 20
+                          property real targetWidth: xmbModel.fullscreen ? parent.width : Math.min(parent.width - 80, 820)
+                          property real targetHeight: xmbModel.fullscreen ? parent.height : Math.min(parent.height - 80, 560)
+                          width: startWidth + (targetWidth - startWidth) * morphProgress
+                          height: 58 + (targetHeight - 58) * morphProgress
+                          x: (parent.width - width) / 2
+                          y: (parent.height - 66) * (1 - morphProgress) + ((parent.height - height) / 2) * morphProgress
+                          color: Qt.alpha(theme.colors.window_background || "#1a1b26", theme.shellOpacity)
+                          border.color: theme.colors.border || "#3d4355"
+                          border.width: 1
+                          radius: xmbModel.fullscreen ? 16 * (1 - morphProgress) : 16 + 4 * morphProgress
+
+                          Row {
+                              id: morphIcons
+                              anchors.horizontalCenter: parent.horizontalCenter
+                              anchors.verticalCenter: parent.verticalCenter
+                              height: 36 + 20 * morphSurface.morphProgress
+                              spacing: 0
+                              opacity: Math.max(0, 1 - morphSurface.morphProgress / 0.82)
+
+                              Repeater {
+                                  model: applicationModel.items()
+
+                                  delegate: Item {
+                                      required property var modelData
+                                      width: 36 + 20 * morphSurface.morphProgress
+                                      height: morphIcons.height
+
+                                      OrbitIcon {
+                                          anchors.centerIn: parent
+                                          width: 24 + 16 * morphSurface.morphProgress
+                                          height: width
+                                          iconSource: applicationModel.iconPath(modelData)
+                                          iconSize: 40 + 16 * morphSurface.morphProgress
+                                      }
+                                  }
+                              }
+                          }
+                      }
+                  }
+
+                  Rectangle {
+                      id: xmbLauncherSurface
+                       visible: !root.dockMorphing || root.dockHandoff
+                      Rectangle {
                          id: closeButton
                          anchors.top: parent.top
                          anchors.right: parent.right
@@ -551,10 +676,10 @@ ShellRoot {
                       anchors.centerIn: parent
                      width: xmbModel.fullscreen ? parent.width : Math.min(parent.width - 80, 820)
                        height: xmbModel.fullscreen ? parent.height : Math.min(parent.height - 80, 560)
-                    color: Qt.alpha(theme.colors.window_background || "#1a1b26", 0.97)
+                    color: Qt.alpha(theme.colors.window_background || "#1a1b26", theme.shellOpacity)
                     border.color: theme.colors.border || "#3d4355"
                     border.width: 1
-                     radius: xmbModel.fullscreen ? 0 : 20
+                    radius: xmbModel.fullscreen ? 0 : 20
 
                     Column {
                         anchors.fill: parent
@@ -953,16 +1078,29 @@ ShellRoot {
      }
  }
 
-     Variants {
-        model: Quickshell.screens
+      Variants {
+         model: Quickshell.screens
 
-        Overview {
-            screenData: modelData
-            overviewData: overviewModel
-            monitorData: monitorModel
-            themeData: theme
-        }
-    }
+         Overview {
+             screenData: modelData
+             overviewData: overviewModel
+             monitorData: monitorModel
+             themeData: theme
+         }
+     }
+
+      Variants {
+          model: Quickshell.screens
+
+           TopPanel {
+               screenData: modelData
+               themeData: theme
+               shellVisible: root.shellVisible
+               applicationMenuData: applicationMenuModel
+               monitorName: modelData.name
+               onLauncherRequested: Quickshell.execDetached([root.home + "/.local/bin/orbit-xmb", "open"])
+           }
+      }
 
     Settings {
         settingsData: settingsModel

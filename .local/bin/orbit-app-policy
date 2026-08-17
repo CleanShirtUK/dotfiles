@@ -33,45 +33,72 @@ def load_identities() -> dict:
         raise SystemExit(f"Invalid Orbit application identities: {error}") from error
 
 
-def matches(rule: dict, app_class: str, title: str, floating: bool, xwayland: bool, workspace: str, pin: bool, fullscreen: bool) -> bool:
-    match_type = rule.get("match_type")
-    if match_type:
-        value = str(rule.get("match_pattern") or rule.get("match_value", ".*"))
-        if match_type == "class":
-            if not re.search(value, app_class):
-                return False
-        elif match_type == "title":
-            if not re.search(value, title):
-                return False
-        elif match_type == "xwayland" and xwayland != str(rule.get("match_value", "true")).lower() == "true":
-            return False
-        elif match_type == "floating" and floating != str(rule.get("match_value", "true")).lower() == "true":
-            return False
-        elif match_type == "fullscreen" and fullscreen != str(rule.get("match_value", "true")).lower() == "true":
-            return False
-        elif match_type == "pin" and pin != str(rule.get("match_value", "true")).lower() == "true":
-            return False
-        elif match_type == "workspace" and workspace != str(rule.get("match_value", "")):
-            return False
-        application = str(rule.get("application", ""))
-        if application and match_type in {"title", "xwayland", "floating", "fullscreen", "pin", "workspace"}:
-            classes = load_identities().get(application, {}).get("classes", [])
-            if classes and app_class not in classes:
-                return False
-        return True
+def normalize_rules(config: dict) -> tuple[list[dict], list[dict]]:
+    """Convert both Orbit policy schemas to one matching representation.
 
+    ``[[policy]]`` is the original class/title schema. ``[[rule]]`` is the
+    settings-generated schema. Keep the lists separate so modern rules retain
+    their priority-before-legacy precedence while sharing validation and
+    matching behavior.
+    """
+    legacy = []
+    for rule in config.get("policy", []):
+        legacy.append({
+            "application": rule.get("application", ""),
+            "class_pattern": rule.get("class_pattern", ".*"),
+            "title_pattern": rule.get("title_pattern"),
+            "actions": rule,
+        })
+
+    modern = []
+    for rule in config.get("rule", []):
+        modern.append({
+            "application": rule.get("application", ""),
+            "match_type": rule.get("match_type"),
+            "match_pattern": rule.get("match_pattern") or rule.get("match_value", ".*"),
+            "match_value": rule.get("match_value"),
+            "actions": rule,
+            "priority": int(rule.get("priority", 100)),
+        })
+    modern.sort(key=lambda rule: rule["priority"])
+    return modern, legacy
+
+
+def matches(rule: dict, app_class: str, title: str, floating: bool, xwayland: bool, workspace: str, pin: bool, fullscreen: bool) -> bool:
     application = str(rule.get("application", ""))
     if application:
         classes = load_identities().get(application, {}).get("classes", [])
-        if classes and app_class in classes:
-            return True
+        if classes and app_class not in classes:
+            return False
+
     try:
-        class_match = re.search(rule.get("class_pattern", ".*"), app_class)
-        title_pattern = rule.get("title_pattern")
-        title_match = not title_pattern or re.search(title_pattern, title)
+        match_type = rule.get("match_type")
+        if match_type:
+            value = str(rule["match_pattern"])
+            values = {
+                "class": app_class,
+                "title": title,
+                "workspace": workspace,
+            }
+            if match_type in values:
+                return bool(re.search(value, values[match_type]))
+            booleans = {
+                "xwayland": xwayland,
+                "floating": floating,
+                "fullscreen": fullscreen,
+                "pin": pin,
+            }
+            if match_type in booleans:
+                expected = str(rule.get("match_value", "true")).lower() == "true"
+                return booleans[match_type] == expected
+            return False
+
+        return bool(
+            re.search(str(rule.get("class_pattern", ".*")), app_class)
+            and (not rule.get("title_pattern") or re.search(str(rule["title_pattern"]), title))
+        )
     except re.error as error:
         raise SystemExit(f"Invalid Orbit application policy pattern: {error}") from error
-    return bool(class_match and title_match)
 
 
 def resolve(app_class: str, title: str, floating: bool = False, xwayland: bool = False, workspace: str = "", pin: bool = False, fullscreen: bool = False) -> dict:
@@ -84,15 +111,15 @@ def resolve(app_class: str, title: str, floating: bool = False, xwayland: bool =
     }
     result.update(config.get("defaults", {}))
 
-    application_rules = sorted(config.get("rule", []), key=lambda rule: int(rule.get("priority", 100)))
+    application_rules, legacy_rules = normalize_rules(config)
     for rule in application_rules:
         if matches(rule, app_class, title, floating, xwayland, workspace, pin, fullscreen):
-            result.update({key: value for key, value in rule.items() if key in {"monitor_role", "workspace_policy", "children", "inherit_exclude"} and value not in (None, "")})
+            result.update({key: value for key, value in rule["actions"].items() if key in {"monitor_role", "workspace_policy", "children", "inherit_exclude"} and value not in (None, "")})
             return result
 
-    for rule in config.get("policy", []):
+    for rule in legacy_rules:
         if matches(rule, app_class, title, floating, xwayland, workspace, pin, fullscreen):
-            result.update({key: value for key, value in rule.items() if key not in {"name", "class_pattern", "title_pattern"}})
+            result.update({key: value for key, value in rule["actions"].items() if key not in {"name", "application", "class_pattern", "title_pattern"}})
             break
 
     return result

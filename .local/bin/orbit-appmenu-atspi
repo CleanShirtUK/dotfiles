@@ -1,0 +1,258 @@
+#!/usr/bin/env python3
+"""Read and activate native Wayland application menus through AT-SPI."""
+
+import json
+import subprocess
+import sys
+import dbus
+
+
+REGISTRY_SERVICE = "org.a11y.atspi.Registry"
+REGISTRY_PATH = "/org/a11y/atspi/accessible/root"
+ACCESSIBLE = "org.a11y.atspi.Accessible"
+PROPERTIES = "org.freedesktop.DBus.Properties"
+ACTION = "org.a11y.atspi.Action"
+
+MENU_BAR = 34
+SEPARATOR = 50
+
+
+def hyprland_clients():
+    try:
+        raw = subprocess.run(
+            ["hyprctl", "clients", "-j"],
+            check=True,
+            text=True,
+            capture_output=True,
+        ).stdout
+        return json.loads(raw)
+    except (OSError, subprocess.SubprocessError, json.JSONDecodeError):
+        return []
+
+
+def hyprland_monitors():
+    try:
+        raw = subprocess.run(
+            ["hyprctl", "monitors", "-j"],
+            check=True,
+            text=True,
+            capture_output=True,
+        ).stdout
+        return {int(item.get("id")): str(item.get("name") or "") for item in json.loads(raw)}
+    except (OSError, subprocess.SubprocessError, json.JSONDecodeError, TypeError, ValueError):
+        return {}
+
+
+def enable_accessibility(session):
+    try:
+        props = dbus.Interface(
+            session.get_object("org.a11y.Bus", "/org/a11y/bus"), PROPERTIES
+        )
+        props.Set("org.a11y.Status", "IsEnabled", dbus.Boolean(True))
+    except dbus.DBusException:
+        pass
+
+
+def atspi_bus(session):
+    address = session.get_object("org.a11y.Bus", "/org/a11y/bus").GetAddress(
+        dbus_interface="org.a11y.Bus"
+    )
+    return dbus.bus.BusConnection(address)
+
+
+def prop(bus, service, path, name, default=None):
+    try:
+        value = dbus.Interface(bus.get_object(service, path), PROPERTIES).Get(
+            ACCESSIBLE, name
+        )
+        return value
+    except dbus.DBusException:
+        return default
+
+
+def children(bus, service, path):
+    count = int(prop(bus, service, path, "ChildCount", 0) or 0)
+    try:
+        accessible = dbus.Interface(bus.get_object(service, path), ACCESSIBLE)
+    except dbus.DBusException:
+        return []
+    result = []
+    for index in range(count):
+        try:
+            child_service, child_path = accessible.GetChildAtIndex(index)
+            result.append((str(child_service), str(child_path)))
+        except dbus.DBusException:
+            continue
+    return result
+
+
+def find_menubar(bus, service, path, depth=0):
+    if depth > 8:
+        return None
+    try:
+        role = int(dbus.Interface(bus.get_object(service, path), ACCESSIBLE).GetRole())
+    except dbus.DBusException:
+        role = 0
+    if role == MENU_BAR:
+        return service, path
+    for child_service, child_path in children(bus, service, path):
+        found = find_menubar(bus, child_service, child_path, depth + 1)
+        if found:
+            return found
+    return None
+
+
+def resolve_menu_for_client(bus, service, app_path, title):
+    frames = children(bus, service, app_path)
+    matching = [
+        frame_path
+        for frame_service, frame_path in frames
+        if frame_service == service
+        and str(prop(bus, frame_service, frame_path, "Name", "") or "").strip()
+        == title.strip()
+    ]
+    if len(frames) == 1:
+        return find_menubar(bus, service, frames[0][1]) or find_menubar(bus, service, app_path)
+    if matching:
+        return find_menubar(bus, service, matching[0])
+    # Some Qt applications expose the menu on one main frame while a
+    # secondary native window has focus. If exactly one frame in the
+    # process owns a menubar, that is still the application's active menu.
+    discovered = []
+    for frame_service, frame_path in frames:
+        if frame_service != service:
+            continue
+        menu = find_menubar(bus, service, frame_path)
+        if menu and menu not in discovered:
+            discovered.append(menu)
+    if len(discovered) == 1:
+        return discovered[0]
+    return None
+
+
+def action_state(bus, service, path):
+    try:
+        states = dbus.Interface(bus.get_object(service, path), ACCESSIBLE).GetState()
+    except dbus.DBusException:
+        states = []
+    state = 0
+    for index, value in enumerate(states[:2]):
+        state |= int(value) << (index * 32)
+    return bool(state & (1 << 8) and state & (1 << 24))
+
+
+def menu_tree(bus, service, path, item_id=0, depth=0):
+    if depth > 4:
+        return None
+    role = 0
+    try:
+        role = int(dbus.Interface(bus.get_object(service, path), ACCESSIBLE).GetRole())
+    except dbus.DBusException:
+        pass
+    item_children = []
+    for index, (child_service, child_path) in enumerate(children(bus, service, path)):
+        child = menu_tree(bus, child_service, child_path, index, depth + 1)
+        if child:
+            item_children.append(child)
+    return {
+        "id": item_id,
+        "label": str(prop(bus, service, path, "Name", "") or ""),
+        "type": "separator" if role == SEPARATOR else ("submenu" if item_children else "standard"),
+        "enabled": action_state(bus, service, path),
+        "visible": True,
+        "service": service,
+        "path": path,
+        "children": item_children,
+    }
+
+
+def registered_apps(bus):
+    return children(bus, REGISTRY_SERVICE, REGISTRY_PATH)
+
+
+def service_pid(bus, bus_name):
+    try:
+        dbus_bus = bus.get_object("org.freedesktop.DBus", "/org/freedesktop/DBus")
+        return int(
+            dbus.Interface(dbus_bus, "org.freedesktop.DBus").GetConnectionUnixProcessID(
+                bus_name
+            )
+        )
+    except dbus.DBusException:
+        return 0
+
+
+def snapshot():
+    session = dbus.SessionBus()
+    enable_accessibility(session)
+    clients = hyprland_clients()
+    if not clients:
+        print("[]")
+        return
+    bus = atspi_bus(session)
+    monitors = hyprland_monitors()
+    client_by_pid = {}
+    for client in clients:
+        pid = int(client.get("pid") or 0)
+        if pid:
+            client_by_pid.setdefault(pid, []).append(client)
+    result = []
+    for service, path in registered_apps(bus):
+        pid = service_pid(bus, service)
+        if pid not in client_by_pid:
+            continue
+        resolved_for_pid = None
+        for client in client_by_pid[pid]:
+            title = str(client.get("title") or "")
+            menubar = resolve_menu_for_client(bus, service, path, title)
+            if not menubar:
+                continue
+            menu_service, menu_path = menubar
+            resolved_for_pid = (menu_service, menu_path)
+            tree = menu_tree(bus, menu_service, menu_path)
+            result.append({
+                "pid": pid,
+                "wmClass": str(client.get("class") or ""),
+                "title": title,
+                "monitor": monitors.get(int(client.get("monitor") or -1), ""),
+                "address": str(client.get("address") or ""),
+                "source": "atspi",
+                "layout": {"root": tree},
+            })
+        # If an application exposes one process-wide menu but focus is on a
+        # secondary native window whose title has no separate menubar,
+        # reuse that single source for the remaining windows of the process.
+        if resolved_for_pid:
+            menu_service, menu_path = resolved_for_pid
+            existing_titles = {item["title"] for item in result if item["pid"] == pid}
+            tree = menu_tree(bus, menu_service, menu_path)
+            for client in client_by_pid[pid]:
+                title = str(client.get("title") or "")
+                if title in existing_titles:
+                    continue
+                result.append({
+                    "pid": pid,
+                    "wmClass": str(client.get("class") or ""),
+                    "title": title,
+                    "monitor": monitors.get(int(client.get("monitor") or -1), ""),
+                    "address": str(client.get("address") or ""),
+                    "source": "atspi",
+                    "layout": {"root": tree},
+                })
+    print(json.dumps(result, separators=(",", ":")))
+
+
+def activate(service, path):
+    bus = atspi_bus(dbus.SessionBus())
+    result = dbus.Interface(bus.get_object(service, path), ACTION).DoAction(0)
+    return 0 if result else 1
+
+
+if __name__ == "__main__":
+    if len(sys.argv) == 1 or sys.argv[1] == "snapshot":
+        snapshot()
+        raise SystemExit(0)
+    if sys.argv[1] == "activate" and len(sys.argv) == 4:
+        raise SystemExit(activate(sys.argv[2], sys.argv[3]))
+    print("usage: orbit-appmenu-atspi [snapshot|activate SERVICE PATH]", file=sys.stderr)
+    raise SystemExit(2)

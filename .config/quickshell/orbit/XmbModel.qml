@@ -13,8 +13,10 @@ Item {
     property var categoryMap: ({})
     property var overrides: ({})
     property bool fullscreen: false
+    required property var monitorModel
     property string query: ""
     property string category: "All"
+    property int launchRevision: 0
     readonly property var applications: DesktopEntries.applications.values
 
     FileView {
@@ -103,8 +105,17 @@ Item {
 
     function launch(app) {
         if (app) {
-            Quickshell.execDetached([Quickshell.env("HOME") + "/.local/bin/orbit-app-observe", "launch", "--desktop", app.id, "--command", app.execString || ""])
-            app.execute()
+            var monitor = monitorModel.focusedName
+            var workspace = ""
+            for (var index = 0; index < monitorModel.monitors.length; index++) {
+                var candidate = monitorModel.monitors[index]
+                if (candidate.name === monitor && candidate.activeWorkspace)
+                    workspace = String(candidate.activeWorkspace.name || candidate.activeWorkspace.id)
+            }
+            var expectedClass = app.startupWMClass || app.id
+            var launchId = "orbit-" + Date.now() + "-" + (++launchRevision)
+            Quickshell.execDetached([Quickshell.env("HOME") + "/.local/bin/orbit-app-observe", "launch", "--desktop", app.id, "--command", app.execString || "", "--launch-id", launchId])
+            Quickshell.execDetached([Quickshell.env("HOME") + "/.local/bin/orbit-app-launch", "--monitor", monitor, "--workspace", workspace, "--class", expectedClass, "--launch-id", launchId, app.execString || ""])
         }
     }
 

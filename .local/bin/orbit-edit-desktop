@@ -1,0 +1,25 @@
+#!/bin/sh
+
+set -eu
+
+desktop_id=${1:-}
+[ -n "$desktop_id" ] || exit 2
+
+case "$desktop_id" in
+    */*) desktop_name=${desktop_id##*/} ;;
+    *) desktop_name="$desktop_id.desktop" ;;
+esac
+
+for directory in \
+    "$HOME/.local/share/applications" \
+    "$HOME/.local/share/flatpak/exports/share/applications" \
+    "/usr/local/share/applications" \
+    "/usr/share/applications" \
+    "/var/lib/flatpak/exports/share/applications"; do
+    desktop_file="$directory/$desktop_name"
+    if [ -f "$desktop_file" ]; then
+        exec xdg-open "$desktop_file"
+    fi
+done
+
+exit 1

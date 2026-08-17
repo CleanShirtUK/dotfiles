@@ -1,29 +1,55 @@
+[application."dev.zed.Zed"]
+classes = ["org.quickshell"]
+titles = ["Orbit Settings"]
+addresses = []
+pids = []
+confidence = "observed"
+
 [application."md.obsidian.Obsidian"]
-classes = ["md.obsidian.Obsidian"]
-titles = ["orbit shell migration questions and tracking - MainVault - Obsidian 1.13.7"]
+classes = ["md.obsidian.Obsidian", "org.wezfurlong.wezterm"]
+titles = ["MainVault - Obsidian 1.13.7", "bash", "orbit shell migration questions and tracking - MainVault - Obsidian 1.13.7"]
+addresses = []
+pids = []
 confidence = "confirmed"
 
 [application."org.darktable.darktable"]
 classes = ["darktable"]
 titles = []
+addresses = []
+pids = []
 confidence = "confirmed"
 
 [application."org.gnome.FileRoller"]
 classes = ["org.gnome.FileRoller"]
 titles = []
+addresses = []
+pids = []
 confidence = "confirmed"
+
+[application."org.gnome.Nautilus"]
+classes = ["org.gnome.Nautilus", "org.quickshell"]
+titles = ["Home", "Orbit Settings"]
+addresses = []
+pids = []
+confidence = "observed"
 
 [application."org.wezfurlong.wezterm"]
 classes = ["org.wezfurlong.wezterm"]
-titles = ["~"]
+titles = ["bash", "zsh", "~"]
+addresses = []
+pids = []
 confidence = "confirmed"
 
 [application."steam"]
 classes = ["steam"]
 titles = ["Steam"]
+addresses = []
+pids = []
 confidence = "confirmed"
 
 [application."zen-browser"]
 classes = ["zen"]
-titles = ["hyprparser - Rust — Zen Browser"]
+titles = ["Zen Browser", "hyprparser - Rust — Zen Browser"]
+addresses = []
+pids = []
 confidence = "confirmed"

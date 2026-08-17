@@ -2,6 +2,19 @@
 
 set -eu
 
+if ! command -v zenity >/dev/null 2>&1; then
+    printf 'Shutdown confirmation is unavailable; refusing to terminate the session.\n' >&2
+    exit 1
+fi
+
+if ! zenity --question \
+    --title='End Hyprland session?' \
+    --text='Save your work before ending the current graphical session.' \
+    --ok-label='End session' \
+    --cancel-label='Cancel'; then
+    exit 0
+fi
+
 "$HOME/.config/hypr/scripts/blank-special-workspaces" enter
 "$HOME/.config/hypr/scripts/wallpaper-animation" exit
 sleep 1

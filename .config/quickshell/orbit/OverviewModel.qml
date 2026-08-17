@@ -7,6 +7,7 @@ Item {
 
     required property var windowModel
     required property var monitorModel
+    required property var snapshot
     property bool overviewVisible: false
     property int selectedWorkspaceIndex: 0
     property string originalAddress: ""
@@ -15,14 +16,12 @@ Item {
     property string activeWorkspaceName: ""
     property string activeWorkspaceMonitor: ""
     property int stateRevision: -1
-    property bool altHeld: false
     property bool altObservedHeld: false
-    property bool altReleaseArmed: false
+    signal refocusOverlayRequested()
 
     readonly property string statePath: (Quickshell.env("XDG_CACHE_HOME") || (Quickshell.env("HOME") + "/.cache")) + "/orbit/overview-visible"
-    readonly property string cyclePath: (Quickshell.env("XDG_CACHE_HOME") || (Quickshell.env("HOME") + "/.cache")) + "/orbit/overview-cycle"
     readonly property string altStatePath: (Quickshell.env("XDG_RUNTIME_DIR") || ("/run/user/" + Quickshell.env("UID"))) + "/orbit/alt-held"
-    property string lastCycleRequest: ""
+    property int cycleCounter: -1
 
     FileView {
         id: stateFile
@@ -43,24 +42,6 @@ Item {
     }
 
     Process {
-        id: cycleProcess
-        command: ["cat", root.cyclePath]
-        running: true
-        stdout: StdioCollector {
-            onStreamFinished: root.handleCycleRequest(text)
-        }
-    }
-
-    Process {
-        id: activeWorkspaceProcess
-        command: ["hyprctl", "activeworkspace", "-j"]
-        running: true
-        stdout: StdioCollector {
-            onStreamFinished: root.recordActiveWorkspace(text)
-        }
-    }
-
-    Process {
         id: altStateProcess
         command: ["cat", root.altStatePath]
         running: true
@@ -76,44 +57,9 @@ Item {
         onTriggered: {
             if (!stateProcess.running)
                 stateProcess.running = true
-            if (!cycleProcess.running)
-                cycleProcess.running = true
-            if (!activeWorkspaceProcess.running)
-                activeWorkspaceProcess.running = true
             if (!altStateProcess.running)
                 altStateProcess.running = true
         }
-    }
-
-    Timer {
-        id: altReleaseGuard
-        interval: 100
-        repeat: false
-        onTriggered: {
-            if (!root.altHeld && root.overviewVisible)
-                root.closeFromInput()
-        }
-    }
-
-    Process {
-        id: workspaceProcess
-        command: ["hyprctl", "workspaces", "-j"]
-        running: true
-        stdout: StdioCollector {
-            onStreamFinished: root.reloadWorkspaces(text)
-        }
-    }
-
-    Timer {
-        interval: 500
-        running: true
-        repeat: true
-        onTriggered: root.refresh()
-    }
-
-    function refresh() {
-        if (!workspaceProcess.running)
-            workspaceProcess.running = true
     }
 
     function reloadState() {
@@ -124,37 +70,42 @@ Item {
         var fields = raw.trim().split(/\s+/)
         var status = fields[0]
         var revision = fields.length > 1 ? parseInt(fields[1]) : 0
+        var nextCycles = fields.length > 2 ? parseInt(fields[2]) : 0
+        if (isNaN(nextCycles) || nextCycles < 0)
+            nextCycles = 0
         if (status === "1")
             status = "open"
         if (status === "0")
             status = "closed"
-        if (isNaN(revision) || revision < stateRevision)
+        if (isNaN(revision) || revision <= stateRevision)
             return
+        var wasVisible = overviewVisible
+        var pendingCycles = cycleCounter < 0 ? 0 : Math.max(0, nextCycles - cycleCounter)
         stateRevision = revision
+        cycleCounter = nextCycles
         var nextVisible = status === "open"
-        if (nextVisible === overviewVisible)
-            return
         overviewVisible = nextVisible
         if (nextVisible) {
-            lastCycleRequest = ""
-            selectFocused()
+            if (!wasVisible) {
+                selectFocused()
+                Qt.callLater(root.focusSelectedWorkspace)
+            }
         } else {
-            lastCycleRequest = ""
+            pendingCycles = 0
+        }
+        for (var cycleIndex = 0; cycleIndex < pendingCycles; cycleIndex++) {
+            if (overviewVisible)
+                cycle(1)
         }
     }
 
     function openFromTrigger() {
         if (overviewVisible)
             return
-        lastCycleRequest = ""
         // Require a real helper press edge; a stale pre-trigger 0 must not
         // close the newly opened overlay.
         altObservedHeld = false
-        altReleaseArmed = false
-        altReleaseGuard.restart()
-        selectFocused()
-        overviewVisible = true
-        Qt.callLater(root.focusSelectedWorkspace)
+        Quickshell.execDetached([Quickshell.env("HOME") + "/.local/bin/orbit-overview", "open"])
     }
 
     function cycleFromTrigger() {
@@ -162,18 +113,14 @@ Item {
             openFromTrigger()
             return
         }
-        cycle(1)
+        Quickshell.execDetached([Quickshell.env("HOME") + "/.local/bin/orbit-overview", "cycle"])
     }
 
     function closeFromTrigger() {
-        altReleaseGuard.stop()
-        altReleaseArmed = false
-        overviewVisible = false
+        Quickshell.execDetached([Quickshell.env("HOME") + "/.local/bin/orbit-overview", "close"])
     }
 
     function closeFromInput() {
-        altReleaseGuard.stop()
-        altReleaseArmed = false
         overviewVisible = false
         Quickshell.execDetached([Quickshell.env("HOME") + "/.local/bin/orbit-overview", "close-state"])
     }
@@ -182,7 +129,6 @@ Item {
         var state = raw.trim()
         if (state !== "0" && state !== "1")
             return
-        altHeld = state === "1"
         if (state === "1") {
             altObservedHeld = true
         } else if (state === "0" && overviewVisible && altObservedHeld) {
@@ -190,30 +136,8 @@ Item {
         }
     }
 
-    function handleCycleRequest(raw) {
-        var request = raw.trim()
-        if (!request || request === "0" || request === lastCycleRequest)
-            return
-        lastCycleRequest = request
-        if (overviewVisible)
-            cycle(1)
-    }
-
-    function reloadWorkspaces(raw) {
+    function recordActiveWorkspace(active) {
         try {
-            workspaces = JSON.parse(raw).filter(function(workspace) {
-                return !String(workspace.name || "").startsWith("special:")
-            }).sort(function(left, right) {
-                return left.id - right.id
-            })
-        } catch (error) {
-            workspaces = []
-        }
-    }
-
-    function recordActiveWorkspace(raw) {
-        try {
-            var active = JSON.parse(raw)
             var monitor = String(active.monitor || "")
             var name = String(active.name || "")
             if (!monitor || !name)
@@ -317,6 +241,7 @@ Item {
         if (!workspace || !workspace.name)
             return
         Quickshell.execDetached([Quickshell.env("HOME") + "/.local/bin/orbit-overview", "workspace", workspace.name])
+        refocusOverlayRequested()
     }
 
     function focusSelectedWorkspace() {
@@ -345,5 +270,14 @@ Item {
         Quickshell.execDetached([Quickshell.env("HOME") + "/.local/bin/orbit-overview", "close"])
     }
 
-    Component.onCompleted: refresh()
+    Connections {
+        target: root.snapshot
+        function onWorkspacesChanged() { root.workspaces = root.snapshot.workspaces }
+        function onActiveWorkspaceChanged() { root.recordActiveWorkspace(root.snapshot.activeWorkspace) }
+    }
+
+    Component.onCompleted: {
+        workspaces = snapshot.workspaces
+        recordActiveWorkspace(snapshot.activeWorkspace)
+    }
 }

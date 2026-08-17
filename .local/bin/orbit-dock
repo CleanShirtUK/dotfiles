@@ -1,0 +1,62 @@
+#!/usr/bin/env python3
+"""Persist Orbit dock pin changes without partially-written configuration."""
+
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import tempfile
+from pathlib import Path
+
+
+DOCK = Path.home() / ".config/orbit/dock.json"
+
+
+def load() -> dict:
+    try:
+        value = json.loads(DOCK.read_text())
+        return value if isinstance(value, dict) else {"pinned": []}
+    except (FileNotFoundError, json.JSONDecodeError):
+        return {"pinned": []}
+
+
+def save(value: dict) -> None:
+    DOCK.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.NamedTemporaryFile("w", dir=DOCK.parent, delete=False) as stream:
+        json.dump(value, stream, indent=2)
+        stream.write("\n")
+        temporary = Path(stream.name)
+    os.replace(temporary, DOCK)
+
+
+def update(action: str, desktop: str, app_class: str = "", label: str = "") -> None:
+    config = load()
+    pinned = config.setdefault("pinned", [])
+    if action == "pin":
+        if not any(item.get("desktop") == desktop for item in pinned):
+            pinned.append({"label": label, "desktop": desktop, "class": app_class})
+    else:
+        pinned[:] = [item for item in pinned if item.get("desktop") != desktop]
+    save(config)
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser()
+    subparsers = parser.add_subparsers(dest="action", required=True)
+    pin = subparsers.add_parser("pin")
+    pin.add_argument("--desktop", required=True)
+    pin.add_argument("--class", dest="app_class", required=True)
+    pin.add_argument("--label", required=True)
+    unpin = subparsers.add_parser("unpin")
+    unpin.add_argument("--desktop", required=True)
+    args = parser.parse_args()
+
+    if args.action == "pin":
+        update("pin", args.desktop, args.app_class, args.label)
+    else:
+        update("unpin", args.desktop)
+
+
+if __name__ == "__main__":
+    main()

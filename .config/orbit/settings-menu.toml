@@ -1,0 +1,79 @@
+# Orbit settings navigation. Module IDs are built into the shell; this file
+# controls ordering, grouping, labels, and visibility only.
+
+[[item]]
+id = "appearance"
+label = "Appearance"
+icon = "preferences-desktop-theme"
+group = "Personalization"
+enabled = true
+
+[[item]]
+id = "shell"
+label = "Shell"
+icon = "preferences-system"
+group = "Personalization"
+enabled = true
+
+[[item]]
+id = "wallpaper"
+label = "Wallpaper"
+icon = "preferences-desktop-wallpaper"
+group = "Personalization"
+enabled = true
+
+[[item]]
+id = "displays"
+label = "Displays"
+icon = "video-display"
+group = "Hardware"
+enabled = true
+
+[[item]]
+id = "audio"
+label = "Audio"
+icon = "audio-card"
+group = "Hardware"
+enabled = true
+
+[[item]]
+id = "network"
+label = "Network"
+icon = "network-wireless"
+group = "Hardware"
+enabled = true
+
+[[item]]
+id = "bluetooth"
+label = "Bluetooth"
+icon = "bluetooth"
+group = "Hardware"
+enabled = true
+
+[[item]]
+id = "applications"
+label = "Windows and Applications"
+icon = "preferences-system-windows"
+group = "System"
+enabled = true
+
+[[item]]
+id = "power"
+label = "Power"
+icon = "system-shutdown"
+group = "System"
+enabled = true
+
+[[item]]
+id = "lock-idle"
+label = "Lock and Idle"
+icon = "system-lock-screen"
+group = "System"
+enabled = false
+
+[[item]]
+id = "diagnostics"
+label = "Diagnostics"
+icon = "dialog-information"
+group = "System"
+enabled = true

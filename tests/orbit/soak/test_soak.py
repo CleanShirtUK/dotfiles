@@ -30,9 +30,9 @@ def utc_now() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 
-def run(command: list[str], timeout: float = 10) -> tuple[int, str, str]:
+def run(command: list[str], timeout: float = 10, env: dict[str, str] | None = None) -> tuple[int, str, str]:
     try:
-        result = subprocess.run(command, capture_output=True, text=True, timeout=timeout)
+        result = subprocess.run(command, capture_output=True, text=True, timeout=timeout, env=env)
     except (OSError, subprocess.TimeoutExpired) as error:
         return 124, "", str(error)
     return result.returncode, result.stdout.strip(), result.stderr.strip()
@@ -104,14 +104,23 @@ def snapshot(log_dir: Path, iteration: int, event: dict) -> None:
     path = log_dir / "snapshots" / f"{iteration:06d}.json"
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps({"time": utc_now(), "event": event, "state": captured}, indent=2) + "\n")
-    code, stdout, stderr = run(["journalctl", "--user", "-u", "orbit-shell.service", "-n", "100", "--no-pager"])
+
+
+def capture_journal(log_dir: Path, label: str, since: float) -> float:
+    until = time.time()
+    code, stdout, stderr = run([
+        "journalctl", "--user", "-u", "orbit-shell.service",
+        "--since", f"@{since:.3f}", "--until", f"@{until:.3f}",
+        "--output=short-iso-precise", "--no-pager",
+    ])
     if code == 0:
-        journal_path = log_dir / "journal" / f"{iteration:06d}.log"
+        journal_path = log_dir / "journal" / f"{label}.log"
         journal_path.parent.mkdir(parents=True, exist_ok=True)
         journal_path.write_text(stdout + "\n")
     elif stderr:
         with (log_dir / "journal-errors.log").open("a") as stream:
             stream.write(stderr + "\n")
+    return until
 
 
 def exercise_safe_state_paths() -> list[str]:
@@ -132,6 +141,8 @@ def exercise_safe_state_paths() -> list[str]:
         path = cache / name
         if path.exists() and not path.read_text().strip():
             failures.append(f"empty state file: {path}")
+    if (cache / "overview-cycle").exists():
+        failures.append(f"obsolete overview cycle state remains: {cache / 'overview-cycle'}")
     return failures
 
 
@@ -140,17 +151,33 @@ def signal_handler(_signum, _frame):
     STOP = True
 
 
+def sleep_interruptibly(seconds: float) -> None:
+    wake_at = time.monotonic() + seconds
+    while not STOP:
+        remaining = wake_at - time.monotonic()
+        if remaining <= 0:
+            return
+        time.sleep(min(1.0, remaining))
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(prog="orbit-soak")
-    parser.add_argument("--hours", type=float, default=8.0)
-    parser.add_argument("--minutes", type=float, default=None)
+    duration_group = parser.add_mutually_exclusive_group()
+    duration_group.add_argument("--hours", type=float, default=None, help="actual soak duration (default: 8)")
+    duration_group.add_argument(
+        "--minutes", type=float, choices=(1.0, 2.0), default=None,
+        help="explicit one- or two-minute smoke run, not soak evidence",
+    )
     parser.add_argument("--interval", type=float, default=30.0)
     parser.add_argument("--max-rss-mb", type=int, default=1024)
     parser.add_argument("--snapshot-every", type=int, default=10)
     args = parser.parse_args()
-    duration = args.minutes * 60 if args.minutes is not None else args.hours * 3600
+    mode = "smoke" if args.minutes is not None else "soak"
+    duration = args.minutes * 60 if args.minutes is not None else (args.hours if args.hours is not None else 8.0) * 3600
     if duration < 0:
         parser.error("duration must not be negative")
+    if mode == "soak" and duration < 3600:
+        parser.error("actual soak duration must be at least one hour; use --minutes 1 or 2 for smoke")
     if args.interval <= 0 or args.snapshot_every <= 0:
         parser.error("interval and snapshot-every must be positive")
 
@@ -167,15 +194,24 @@ def main() -> int:
     deadline = start + duration
     baseline_service = None
     baseline_tree = sha256_tree(HOME / ".config/orbit/generated")
+    if baseline_tree == "missing":
+        failures.append("generated theme artifact tree is missing at start")
     maximum_rss = 0
     iteration = 0
+    journal_since = time.time()
 
     def event(value: dict):
         value = {"time": utc_now(), **value}
         with events_path.open("a") as stream:
             stream.write(json.dumps(value) + "\n")
 
-    code, stdout, stderr = run([str(ROOT / "tests/orbit/run-all")], timeout=120)
+    baseline_environment = {
+        **os.environ,
+        "ORBIT_TEST_LOG_DIR": str(run_dir / "contract-baseline"),
+    }
+    code, stdout, stderr = run(
+        [str(ROOT / "tests/orbit/run-all")], timeout=180, env=baseline_environment,
+    )
     event({"kind": "contract-baseline", "exit": code, "stdout": stdout, "stderr": stderr})
     if code != 0:
         failures.append("contract baseline failed")
@@ -184,6 +220,8 @@ def main() -> int:
         baseline_service = service_state("orbit-shell.service")
         if baseline_service.get("ActiveState") != "active":
             failures.append(f"orbit-shell not active at start: {baseline_service}")
+        if not baseline_service.get("MainPID", "").isdigit() or baseline_service.get("MainPID") == "0":
+            failures.append(f"orbit-shell has no MainPID at start: {baseline_service}")
         event({"kind": "baseline", "service": baseline_service, "generated_sha256": baseline_tree})
     except RuntimeError as error:
         failures.append(str(error))
@@ -200,6 +238,8 @@ def main() -> int:
                 current_failures.append(f"orbit-shell state: {service}")
             if baseline_service and service.get("NRestarts") != baseline_service.get("NRestarts"):
                 current_failures.append(f"orbit-shell restarted: {baseline_service.get('NRestarts')} -> {service.get('NRestarts')}")
+            if baseline_service and service.get("MainPID") != baseline_service.get("MainPID"):
+                current_failures.append(f"orbit-shell MainPID changed: {baseline_service.get('MainPID')} -> {service.get('MainPID')}")
             rss = process_rss_kib(service.get("MainPID", "0"))
             maximum_rss = max(maximum_rss, rss)
             current["rss_kib"] = rss
@@ -207,10 +247,13 @@ def main() -> int:
                 current_failures.append(f"orbit-shell RSS exceeded limit: {rss} KiB")
             tree = sha256_tree(HOME / ".config/orbit/generated")
             current["generated_sha256"] = tree
-            if tree != baseline_tree:
+            if tree == "missing":
+                current_failures.append("generated theme artifact tree is missing")
+            elif tree != baseline_tree:
                 current_failures.append("generated theme artifacts changed during soak")
             if iteration % args.snapshot_every == 0 or iteration == 1:
                 snapshot(run_dir, iteration, current)
+                journal_since = capture_journal(run_dir, f"{iteration:06d}", journal_since)
         except Exception as error:  # noqa: BLE001 - retain the failure and continue soaking
             current_failures.append(repr(error))
         current["failures"] = current_failures
@@ -221,11 +264,14 @@ def main() -> int:
             failures.extend(f"iteration {iteration}: {failure}" for failure in current_failures)
         remaining = deadline - time.monotonic()
         if remaining > 0 and not STOP:
-            time.sleep(min(args.interval, remaining))
+            sleep_interruptibly(min(args.interval, remaining))
 
+    journal_since = capture_journal(run_dir, "final", journal_since)
+    status = "INCOMPLETE" if STOP else ("PASS" if not failures else "FAIL")
     summary = {
         "run_id": run_dir.name,
-        "status": "PASS" if not failures else "FAIL",
+        "mode": mode,
+        "status": status,
         "requested_duration_seconds": duration,
         "elapsed_seconds": round(time.monotonic() - start, 3),
         "iterations": iteration,
@@ -237,6 +283,8 @@ def main() -> int:
     result_path.write_text(json.dumps(summary, indent=2) + "\n")
     print(json.dumps(summary, indent=2))
     print(f"Logs: {run_dir}")
+    if STOP:
+        return 2
     return 0 if not failures else 1
 
 

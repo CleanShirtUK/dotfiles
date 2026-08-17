@@ -1,0 +1,132 @@
+#!/usr/bin/env python3
+"""Expose registered XWayland DBusMenu applications as JSON for Orbit."""
+
+import json
+import re
+import subprocess
+import sys
+import time
+
+import dbus
+
+
+REGISTRAR = "com.canonical.AppMenu.Registrar"
+REGISTRAR_PATH = "/com/canonical/AppMenu/Registrar"
+REGISTRAR_IFACE = "com.canonical.AppMenu.Registrar"
+MENU_IFACE = "com.canonical.dbusmenu"
+
+
+def command(*args):
+    return subprocess.run(args, check=False, text=True, capture_output=True).stdout
+
+
+def xwindows():
+    raw = command("xprop", "-root", "_NET_CLIENT_LIST")
+    return re.findall(r"0x[0-9a-fA-F]+", raw)
+
+
+def xproperties(window):
+    raw = command(
+        "xprop",
+        "-id",
+        window,
+        "_NET_WM_PID",
+        "WM_CLASS",
+        "_NET_WM_NAME",
+        "WM_NAME",
+    )
+    pid_match = re.search(r"_NET_WM_PID\([^)]*\) = (\d+)", raw)
+    class_match = re.search(r'WM_CLASS\([^)]*\) = "([^"]*)", "([^"]*)"', raw)
+    name_match = re.search(r'_NET_WM_NAME\([^)]*\) = "(.*)"', raw)
+    if not name_match:
+        name_match = re.search(r'WM_NAME\([^)]*\) = "(.*)"', raw)
+    return {
+        "windowId": int(window, 16),
+        "pid": int(pid_match.group(1)) if pid_match else 0,
+        "wmClass": class_match.group(2) if class_match else "",
+        "title": name_match.group(1) if name_match else "",
+    }
+
+
+def menu_for(bus, window_id):
+    try:
+        registrar = bus.get_object(REGISTRAR, REGISTRAR_PATH)
+        method = dbus.Interface(registrar, REGISTRAR_IFACE).GetMenuForWindow
+        service, path = method(dbus.UInt32(window_id))
+        return str(service), str(path)
+    except dbus.DBusException:
+        return None
+
+
+def plain(value):
+    if isinstance(value, dict):
+        return {str(key): plain(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [plain(item) for item in value]
+    if isinstance(value, (str, int, float, bool)) or value is None:
+        return value
+    return str(value)
+
+
+def layout_for(bus, service, path):
+    menu = bus.get_object(service, path)
+    revision, layout = dbus.Interface(menu, MENU_IFACE).GetLayout(
+        dbus.Int32(0), dbus.Int32(-1), dbus.Array([], signature="s")
+    )
+
+    def convert(node):
+        item_id, properties, children = node
+        result = {
+            "id": int(item_id),
+            "properties": {
+                str(key): plain(value)
+                for key, value in properties.items()
+                if str(key) != "icon-data"
+            },
+            "children": [],
+        }
+        result["children"] = [convert(child) for child in children]
+        return result
+
+    return {"revision": int(revision), "root": convert(layout)}
+
+
+def snapshot():
+    bus = dbus.SessionBus()
+    entries = []
+    for window in xwindows():
+        properties = xproperties(window)
+        menu = menu_for(bus, properties["windowId"])
+        if not menu:
+            continue
+        service, path = menu
+        try:
+            layout = layout_for(bus, service, path)
+        except dbus.DBusException:
+            continue
+        properties.update({"service": service, "path": path, "layout": layout})
+        entries.append(properties)
+    print(json.dumps(entries, separators=(",", ":")))
+
+
+def activate(window_id, item_id):
+    bus = dbus.SessionBus()
+    menu = menu_for(bus, int(window_id))
+    if not menu:
+        return 1
+    service, path = menu
+    remote = bus.get_object(service, path)
+    dbus.Interface(remote, MENU_IFACE).Event(
+        dbus.Int32(int(item_id)), "clicked", dbus.String(""), dbus.UInt32(int(time.time()))
+    )
+    return 0
+
+
+if __name__ == "__main__":
+    if len(sys.argv) == 1 or sys.argv[1] == "snapshot":
+        snapshot()
+        raise SystemExit(0)
+    if sys.argv[1] == "activate" and len(sys.argv) == 4:
+        raise SystemExit(activate(int(sys.argv[2]), int(sys.argv[3])))
+    print("usage: orbit-appmenu [snapshot|activate WINDOW_ID ITEM_ID]", file=sys.stderr)
+    raise SystemExit(2)

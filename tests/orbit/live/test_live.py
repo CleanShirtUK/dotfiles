@@ -5,13 +5,13 @@ from __future__ import annotations
 
 import json
 import os
-import re
 import shutil
 import subprocess
 from pathlib import Path
 
 RESULTS = []
 LOG_DIR = Path(os.environ.get("ORBIT_TEST_LOG_DIR", "."))
+COMMAND_TIMEOUT = 10
 
 
 def check(name, function):
@@ -30,7 +30,9 @@ class SkipTest(Exception):
 
 
 def command(*args):
-    return subprocess.run(args, check=True, capture_output=True, text=True).stdout.strip()
+    return subprocess.run(
+        args, check=True, capture_output=True, text=True, timeout=COMMAND_TIMEOUT,
+    ).stdout.strip()
 
 
 def require_session():
@@ -69,25 +71,34 @@ def check_roles():
 def check_services():
     require_session()
     for service in ("orbit-shell.service", "orbit-input-state.service"):
-        result = subprocess.run(["systemctl", "--user", "is-active", service], capture_output=True, text=True)
+        result = subprocess.run(
+            ["systemctl", "--user", "is-active", service],
+            capture_output=True,
+            text=True,
+            timeout=COMMAND_TIMEOUT,
+        )
         if result.returncode != 0:
             raise AssertionError(f"{service}: {result.stdout.strip() or result.stderr.strip()}")
 
 
 def check_overview_bindings():
     require_session()
-    output = command("hyprctl", "binds")
-    blocks = re.split(r"(?m)(?=^(?:bind|binde|bindr)$)", output)
-    tab = [block for block in blocks if re.search(r"(?m)^\s*key: TAB\s*$", block)]
-    alt_left = [block for block in blocks if re.search(r"(?m)^\s*key: Alt_L\s*$", block)]
-    alt_right = [block for block in blocks if re.search(r"(?m)^\s*key: Alt_R\s*$", block)]
-    assert len(tab) == 1 and tab[0].startswith("bind\n"), "Alt+Tab binding is missing or repeating"
-    assert len(alt_left) == 1 and alt_left[0].startswith("bindr\n"), "Alt_L release binding is missing"
-    assert len(alt_right) == 1 and alt_right[0].startswith("bindr\n"), "Alt_R release binding is missing"
+    bindings = json.loads(command("hyprctl", "binds", "-j"))
+    tab = [binding for binding in bindings if str(binding.get("key", "")).upper() == "TAB"]
+    assert len(tab) == 1, f"expected exactly one TAB binding, found {len(tab)}"
+    binding = tab[0]
+    assert int(binding.get("modmask", 0)) & 8, "TAB binding does not require Alt"
+    assert binding.get("dispatcher") == "__lua", "Alt+Tab does not use the expected Lua action"
+    assert not binding.get("repeat") and not binding.get("release"), "Alt+Tab action must be press-only and non-repeating"
+
+    shell = (Path.home() / ".local/bin/orbit-shell").read_text()
+    expected = 'hl.bind(\\"ALT + TAB\\", hl.dsp.exec_cmd(\\"$overview cycle\\"), { repeating = false })'
+    assert expected in shell, "runtime Alt+Tab owner does not install the Orbit overview cycle command"
 
 
 def main() -> int:
-    LOG_DIR.mkdir(parents=True, exist_ok=True)
+    for directory in (LOG_DIR, LOG_DIR / "before", LOG_DIR / "after", LOG_DIR / "artifacts"):
+        directory.mkdir(parents=True, exist_ok=True)
     check("LIVE-001", capture_state)
     check("LIVE-002", check_roles)
     check("LIVE-003", check_services)

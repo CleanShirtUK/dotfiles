@@ -1,0 +1,15 @@
+[Unit]
+Description=Orbit keyboard modifier state helper
+PartOf=hyprland-session.target
+After=hyprland-session.target
+
+[Service]
+ExecStart=/usr/bin/sg input -c %h/.local/bin/orbit-input-state
+RuntimeDirectory=orbit
+RuntimeDirectoryMode=0700
+Restart=on-failure
+RestartSec=2
+UMask=0077
+
+[Install]
+WantedBy=hyprland-session.target

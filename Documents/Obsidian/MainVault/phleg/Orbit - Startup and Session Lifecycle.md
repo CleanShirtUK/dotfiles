@@ -22,6 +22,8 @@ tags: [orbit, startup, hyprland]
 
 ## Shutdown
 
+- The shutdown shortcut requires explicit `zenity` confirmation and fails closed if `zenity` is unavailable.
+- Cancel leaves the session untouched; only confirmation continues the shutdown path.
 - Orbit is hidden.
 - Special workspaces are blanked.
 - The wallpaper exit transition and logout sound run.

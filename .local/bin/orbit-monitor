@@ -105,6 +105,24 @@ def fallback_monitor(role: str, available: list[dict]) -> dict:
     return focused or available[0]
 
 
+def workspace_for_role(role: str) -> str:
+    value = load_settings().get("monitors", {}).get(role, {})
+    if isinstance(value, dict) and value.get("workspace") not in (None, ""):
+        return str(value["workspace"])
+    raise SystemExit(f"No reserved workspace configured: {role}")
+
+
+def workspace_for_monitor(monitor_name_value: str, available: list[dict]) -> str:
+    for role in ("home", "gaming"):
+        try:
+            monitor, _ = select_monitor(role, available, strict=True)
+        except SystemExit:
+            continue
+        if monitor.get("name") == monitor_name_value:
+            return workspace_for_role(role)
+    return ""
+
+
 def monitor_label(monitor: dict) -> str:
     identity = " ".join(
         part for part in (monitor.get("make"), monitor.get("model"), monitor.get("serial")) if part
@@ -125,11 +143,17 @@ def main() -> None:
     resolve = subparsers.add_parser("resolve", help="resolve a logical monitor role")
     resolve.add_argument("role", choices=("home", "gaming"))
     resolve.add_argument("--strict", action="store_true", help="fail if the configured monitor is unavailable")
+    workspace = subparsers.add_parser("workspace-for-monitor", help="resolve a reserved workspace for an output")
+    workspace.add_argument("monitor")
     args = parser.parse_args()
 
     available = monitors()
     if args.command == "list":
         list_monitors(available)
+        return
+
+    if args.command == "workspace-for-monitor":
+        print(workspace_for_monitor(args.monitor, available))
         return
 
     monitor, fallback = select_monitor(args.role, available, args.strict)

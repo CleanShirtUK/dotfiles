@@ -11,11 +11,12 @@ PanelWindow {
     required property var overviewData
     required property var monitorData
     required property var themeData
+    property bool focusPulse: false
     screen: screenData
     visible: overviewData.overviewVisible && monitorData.focusedName === screenData.name
     color: "transparent"
     WlrLayershell.layer: WlrLayer.Overlay
-    WlrLayershell.keyboardFocus: visible ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
+    WlrLayershell.keyboardFocus: visible && !focusPulse ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
     anchors {
         top: true
         bottom: true
@@ -24,6 +25,25 @@ PanelWindow {
     }
 
     onVisibleChanged: if (visible) Qt.callLater(function() { focusScope.forceActiveFocus() })
+
+    Connections {
+        target: overviewData
+        function onRefocusOverlayRequested() {
+            root.focusPulse = true
+            refocusTimer.restart()
+        }
+    }
+
+    Timer {
+        id: refocusTimer
+        interval: 75
+        repeat: false
+        onTriggered: {
+            root.focusPulse = false
+            if (root.visible)
+                focusScope.forceActiveFocus()
+        }
+    }
 
     FocusScope {
         id: focusScope
@@ -46,11 +66,6 @@ PanelWindow {
                 event.accepted = true
             }
         }
-        Keys.onReleased: function(event) {
-            if (event.key === Qt.Key_Alt)
-                overviewData.close()
-        }
-
         Rectangle {
             anchors.centerIn: parent
             width: Math.min(parent.width - 64, 1160)

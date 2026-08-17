@@ -18,6 +18,7 @@ Item {
     })
     property var colors: fallback
     property string palette: "tokyo-night"
+    property real shellOpacity: 0.30
 
     // Keep typography and geometry centralized so the interface font can be
     // split into UI and technical branches without changing every page.
@@ -55,8 +56,9 @@ Item {
         var match = settingsFile.text().match(/\[theme\][\s\S]*?^palette\s*=\s*"([^"]+)"/m)
         if (match && match[1] && match[1] !== palette)
             palette = match[1]
-        else
-            reload()
+        var opacityMatch = settingsFile.text().match(/\[appearance\.transparency\][\s\S]*?^shell_opacity\s*=\s*([0-9.]+)/m)
+        shellOpacity = opacityMatch ? Math.max(0, Math.min(1, Number(opacityMatch[1]))) : 0.30
+        reload()
     }
 
     function reload() {

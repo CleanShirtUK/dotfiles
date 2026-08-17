@@ -1,0 +1,86 @@
+#!/bin/sh
+
+set -eu
+
+target_monitor=
+target_workspace=
+expected_class=
+launch_id=
+while [ "$#" -gt 0 ]; do
+    case "$1" in
+        --monitor|--workspace|--class|--launch-id)
+            [ "$#" -ge 2 ] || { printf 'missing value for %s\n' "$1" >&2; exit 2; }
+            case "$1" in
+                --monitor) target_monitor=$2 ;;
+                --workspace) target_workspace=$2 ;;
+                --class) expected_class=$2 ;;
+                --launch-id) launch_id=$2 ;;
+            esac
+            shift 2
+            ;;
+        --) shift; break ;;
+        *) break ;;
+    esac
+done
+
+if [ "$#" -ne 1 ]; then
+    printf 'usage: %s [--monitor NAME --workspace NAME --class CLASS] COMMAND\n' "${0##*/}" >&2
+    exit 2
+fi
+
+# Desktop Entry Exec fields are not shell commands verbatim. In particular,
+# launching without files must remove field codes such as %U rather than pass
+# them to the application as literal paths. Keep %% as a literal percent.
+command=$(
+    printf '%s' "$1" |
+        sed -E 's/%%/__ORBIT_LITERAL_PERCENT__/g; s/%[fFuUickdDnNvm]/ /g; s/__ORBIT_LITERAL_PERCENT__/%/g'
+)
+if [ -n "$launch_id" ]; then
+    command="ORBIT_LAUNCH_ID=$launch_id $command"
+fi
+
+if [ -z "$target_monitor$target_workspace$expected_class" ]; then
+    exec systemd-run --user --scope --collect --quiet /bin/sh -lc "$command"
+fi
+
+# Capture the launch context before starting the process.  The new client is
+# moved after it maps, so a focus change during a slow application startup
+# cannot change the monitor/workspace selected by the user.
+before=$(hyprctl clients -j 2>/dev/null || printf '[]')
+systemd-run --user --scope --collect --quiet /bin/sh -lc "$command" &
+launcher_pid=$!
+
+if [ -n "$expected_class" ] && [ -n "$target_workspace" ]; then
+    i=0
+    while [ "$i" -lt 40 ]; do
+        clients=$(hyprctl clients -j 2>/dev/null || printf '[]')
+        address=
+        while IFS='\t' read -r candidate_address candidate_pid; do
+            [ -n "$candidate_address" ] || continue
+            if [ -n "$launch_id" ] && [ -r "/proc/$candidate_pid/environ" ]; then
+                if tr '\0' '\n' < "/proc/$candidate_pid/environ" | grep -Fqx "ORBIT_LAUNCH_ID=$launch_id"; then
+                    address=$candidate_address
+                    break
+                fi
+            elif [ -z "$launch_id" ]; then
+                address=$candidate_address
+                break
+            fi
+        done <<EOF
+$(printf '%s\n' "$clients" | jq -r --arg class "$expected_class" --argjson before "$before" '
+    .[] | select(.class == $class) | select((.address as $a | [$before[]?.address] | index($a)) == null) | [.address, (.pid // "")] | @tsv')
+EOF
+        if [ -n "$address" ] && [ "$address" != "null" ]; then
+            hyprctl dispatch movetoworkspacesilent "name:$target_workspace,address:$address" >/dev/null 2>&1 || true
+            if [ -n "$launch_id" ]; then
+                client=$(printf '%s\n' "$clients" | jq -c --arg address "$address" 'first(.[] | select(.address == $address)) // {}')
+                "$HOME/.local/bin/orbit-app-observe" match --launch-id "$launch_id" --address "$address" --pid "$(jq -r '.pid // empty' <<<"$client")" --class "$(jq -r '.class // empty' <<<"$client")" --title "$(jq -r '.title // empty' <<<"$client")" >/dev/null 2>&1 || true
+            fi
+            break
+        fi
+        sleep 0.25
+        i=$((i + 1))
+    done
+fi
+
+wait "$launcher_pid"

@@ -1,0 +1,4 @@
+# Fallback commands used when no Hypridle configuration exists.
+[hypridle]
+lock_action = "loginctl lock-session"
+suspend_action = "systemctl suspend"

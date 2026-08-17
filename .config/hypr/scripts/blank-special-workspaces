@@ -37,11 +37,9 @@ set_normal_animation_speeds() {
 }
 
 blank_workspace_for_monitor() {
-    case "$1" in
-        DP-1) printf '1\n' ;;
-        HDMI-A-1) printf '6\n' ;;
-        *) return 1 ;;
-    esac
+    blank_workspace="$($HOME/.local/bin/orbit-monitor workspace-for-monitor "$1")"
+    [ -n "$blank_workspace" ] || return 1
+    printf '%s\n' "$blank_workspace"
 }
 
 focus_blank_on_all_monitors() {

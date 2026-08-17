@@ -8,11 +8,14 @@ tags: [orbit, testing]
 
 ## Evidence States
 
-- `PASS`: contract and observable result passed.
+- `OPEN`: current evidence is incomplete or contradicts an earlier pass; correction or revalidation is required.
+- `PASS`: all applicable evidence currently recorded for the requirement passed.
 - `FAIL`: reproducible assertion failed.
 - `BLOCKED`: required fixture, device, or recovery path does not exist.
 - `MANUAL`: visual, causal, or hardware behavior requires attendance.
 - `SKIP`: optional prerequisite was unavailable.
+
+The newest directly observed evidence for a requirement takes precedence over older aggregate or worker runs. Keep older runs as historical evidence, but do not use them to preserve `PASS` when a current direct check fails or cannot reproduce the behavior.
 
 ## Test Layers
 
@@ -37,6 +40,8 @@ Run live and soak tests as the desktop user with the graphical session environme
 
 Every manual result records date, environment, exact steps, expected result, actual result, evidence path, and follow-up issue. Use [[Orbit - Issues and Corrections]] for anything that is not an unambiguous pass.
 
-## Confirmed-Fix Commit Rule
+`orbit/project-manifest.json` is the canonical machine-readable source. Validate the Markdown status, test matrix, backlog, and queue views against it whenever work-item state or evidence changes.
 
-When a fix has passed its deterministic checks and all applicable live, attended, hardware, or recovery gates, update the relevant Orbit documentation and commit and push that confirmed fix at that stage. Do not accumulate confirmed fixes across unrelated work. Blocked or unvalidated changes remain documented as such and are not described as complete.
+## Per-Item Integration Rule
+
+Stabilization precedes feature work. Each item is independently verified with its deterministic checks and all applicable live, attended, hardware, or recovery gates before integration. After that independent verification, update the Orbit documentation, make one item-scoped commit directly to `main`, and push it; do not batch unrelated items. Open, blocked, or unvalidated changes remain documented as such and are not described as complete or pushed as confirmed work.

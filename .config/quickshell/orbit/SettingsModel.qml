@@ -5,16 +5,18 @@ import QtQuick
 Item {
     id: root
 
+    required property var snapshot
     readonly property string helper: Quickshell.env("HOME") + "/.local/bin/orbit-settings"
     property bool settingsVisible: false
     property bool loaded: false
-    property bool dirty: false
-    property bool applyConfirmationVisible: false
-    property bool unsavedConfirmationVisible: false
-    property int applyCountdown: 0
-    property string status: ""
-    property var activeSettings: ({})
-    property var draft: ({})
+    property alias dirty: draftLifecycle.dirty
+    property alias applyConfirmationVisible: draftLifecycle.applyConfirmationVisible
+    property alias unsavedConfirmationVisible: draftLifecycle.unsavedConfirmationVisible
+    property alias applyCountdown: draftLifecycle.applyCountdown
+    property alias status: draftLifecycle.status
+    property alias systemActionStatus: systemActions.status
+    property alias activeSettings: draftLifecycle.activeSettings
+    property alias draft: draftLifecycle.draft
     property var menu: []
     property var palettes: []
     property var palettePreviews: ({})
@@ -24,19 +26,30 @@ Item {
     property var applicationPolicies: ({})
     property var applicationIdentities: ({})
     readonly property var applications: DesktopEntries.applications.values
-    property var clients: []
-    property bool matchDialogVisible: false
-    property string matchApplication: ""
-    property int matchRuleIndex: -1
-    property string matchError: ""
-    property var matchCandidates: []
-    property real matchSecondsRemaining: 0
-    property var matchBaseline: ({})
-    property var matchLaunchDesktop: null
+    property alias clients: applicationMatching.clients
+    property alias matchDialogVisible: applicationMatching.matchDialogVisible
+    property alias matchApplication: applicationMatching.matchApplication
+    property alias matchRuleIndex: applicationMatching.matchRuleIndex
+    property alias matchError: applicationMatching.matchError
+    property alias matchCandidates: applicationMatching.matchCandidates
+    property alias matchSecondsRemaining: applicationMatching.matchSecondsRemaining
+    property alias matchBaseline: applicationMatching.matchBaseline
+    property alias matchLaunchDesktop: applicationMatching.matchLaunchDesktop
     property int selectedMonitorIndex: 0
     property var capabilities: ({})
-    property string systemActionStatus: ""
     property string wallpaperServiceStatus: "unknown"
+
+    SettingsSystemActions {
+        id: systemActions
+        helper: root.helper
+        refreshCallback: root.refresh
+    }
+
+    SettingsApplicationMatching {
+        id: applicationMatching
+        settingsModel: root
+        snapshot: root.snapshot
+    }
 
     FileView {
         id: stateFile
@@ -55,60 +68,10 @@ Item {
         }
     }
 
-    Process {
-        id: clientProcess
-        command: ["hyprctl", "clients", "-j"]
-        running: false
-        stdout: StdioCollector {
-            onStreamFinished: root.finishClientPoll(text)
-        }
-    }
-
-    Timer {
-        id: matchTimer
-        interval: 400
-        repeat: true
-        onTriggered: root.pollMatch()
-    }
-
-    Timer {
-        id: matchLaunchTimer
-        interval: 150
-        repeat: false
-        onTriggered: if (root.matchLaunchDesktop) {
-            root.matchLaunchDesktop.execute()
-            root.matchLaunchDesktop = null
-        }
-    }
-
-    Timer {
-        id: applyConfirmationTimer
-        interval: 1000
-        repeat: true
-        onTriggered: {
-            if (root.applyCountdown <= 1) {
-                root.cancelApply()
-            } else {
-                root.applyCountdown -= 1
-            }
-        }
-    }
-
-    Process {
-        id: applyProcess
-        command: [root.helper, "apply", "{}"]
-        running: false
-        stdout: StdioCollector {
-            onStreamFinished: root.finishApply(text)
-        }
-    }
-
-    Process {
-        id: systemActionProcess
-        running: false
-        stdout: StdioCollector {
-            onStreamFinished: root.finishSystemAction(text)
-        }
+    SettingsDraftLifecycle {
+        id: draftLifecycle
+        helper: root.helper
+        refreshCallback: root.refresh
     }
 
     Process {
@@ -197,11 +160,7 @@ Item {
     function loadSnapshot(raw) {
         try {
             var value = JSON.parse(raw)
-            activeSettings = value.settings || {}
-            activeSettings.system = value.system || {}
-            activeSettings.display_profiles = value.display_profiles || []
-            activeSettings.application_policies = value.application_policies || { defaults: {}, rules: [] }
-            draft = clone(activeSettings)
+            draftLifecycle.loadSnapshot(value)
             menu = value.menu || []
             palettes = value.palettes || []
             palettePreviews = value.palette_previews || {}
@@ -210,154 +169,68 @@ Item {
             displayProfiles = value.display_profiles || []
             applicationPolicies = value.application_policies || { defaults: {}, rules: [] }
             applicationIdentities = value.application_identities || {}
-            clients = value.clients || []
             selectedMonitorIndex = Math.max(0, Math.min(selectedMonitorIndex, displayProfiles.length - 1))
             capabilities = value.capabilities || {}
-            dirty = false
             loaded = true
-            status = ""
         } catch (error) {
             status = "Could not load Orbit settings"
         }
     }
 
     function setThemePalette(value) {
-        var next = clone(draft)
-        if (!next.theme)
-            next.theme = {}
-        next.theme.palette = value
-        draft = next
-        dirty = true
+        draftLifecycle.setThemePalette(value)
     }
 
     function setCustomPalette(name, label, colors) {
-        var next = clone(draft)
-        if (!next.theme) next.theme = {}
-        next.theme.palette = name
-        next.theme.custom = { base: activeSettings.theme ? activeSettings.theme.palette : "tokyo-night", label: label, colors: colors }
-        draft = next
-        dirty = true
+        draftLifecycle.setCustomPalette(name, label, colors)
     }
 
     function setAppearanceValue(section, key, value) {
-        var next = clone(draft)
-        if (!next.appearance) next.appearance = {}
-        if (!next.appearance[section]) next.appearance[section] = {}
-        next.appearance[section][key] = value
-        draft = next
-        dirty = true
+        draftLifecycle.setAppearanceValue(section, key, value)
     }
 
     function setAnimationValue(group, key, value) {
-        var next = clone(draft)
-        if (!next.appearance) next.appearance = {}
-        if (!next.appearance.effects) next.appearance.effects = {}
-        if (!next.appearance.effects.animations) next.appearance.effects.animations = {}
-        if (!next.appearance.effects.animations[group]) next.appearance.effects.animations[group] = {}
-        next.appearance.effects.animations[group][key] = value
-        draft = next
-        dirty = true
+        draftLifecycle.setAnimationValue(group, key, value)
     }
 
     function setXmbFullscreen(value) {
-        var next = clone(draft)
-        if (!next.shell)
-            next.shell = {}
-        next.shell.xmb_fullscreen = value
-        draft = next
-        dirty = true
+        draftLifecycle.setXmbFullscreen(value)
     }
 
     function setAudioVolume(value) {
-        var next = clone(draft)
-        if (!next.system) next.system = {}
-        if (!next.system.audio) next.system.audio = {}
-        next.system.audio.volume = value
-        draft = next
-        dirty = true
+        draftLifecycle.setAudioVolume(value)
     }
 
     function setAudioMuted(value) {
-        var next = clone(draft)
-        if (!next.system) next.system = {}
-        if (!next.system.audio) next.system.audio = {}
-        next.system.audio.muted = value
-        draft = next
-        dirty = true
+        draftLifecycle.setAudioMuted(value)
     }
 
     function setNetworkConnection(value) {
-        var next = clone(draft)
-        if (!next.system) next.system = {}
-        if (!next.system.network) next.system.network = {}
-        next.system.network.connection = value
-        draft = next
-        dirty = true
+        draftLifecycle.setNetworkConnection(value)
     }
 
     function setBluetoothDevice(address, connected) {
-        var next = clone(draft)
-        if (!next.system) next.system = {}
-        next.system.bluetooth = { address: address, connected: connected }
-        draft = next
-        dirty = true
+        draftLifecycle.setBluetoothDevice(address, connected)
     }
 
     function setPowerProfile(value) {
-        var next = clone(draft)
-        if (!next.system) next.system = {}
-        next.system.power = { profile: value }
-        draft = next
-        dirty = true
+        draftLifecycle.setPowerProfile(value)
     }
 
     function setTunedProfile(value) {
-        var next = clone(draft)
-        if (!next.system) next.system = {}
-        if (!next.system.power) next.system.power = {}
-        next.system.power.profile = value
-        draft = next
-        dirty = true
+        draftLifecycle.setTunedProfile(value)
     }
 
     function setHypridleValue(key, value) {
-        var next = clone(draft)
-        if (!next.system) next.system = {}
-        if (!next.system.power) next.system.power = {}
-        if (!next.system.power.hypridle) next.system.power.hypridle = {}
-        next.system.power.hypridle[key] = value
-        draft = next
-        dirty = true
+        draftLifecycle.setHypridleValue(key, value)
     }
 
     function saveHypridle(values) {
-        var next = clone(draft)
-        if (!next.system) next.system = {}
-        if (!next.system.power) next.system.power = {}
-        next.system.power.hypridle = values
-        draft = next
-        dirty = true
+        draftLifecycle.saveHypridle(values)
     }
 
     function systemAction(action, payload) {
-        if (systemActionProcess.running)
-            return
-        systemActionStatus = "Applying " + action + "..."
-        systemActionProcess.command = [helper, "action", action, JSON.stringify(payload || {})]
-        systemActionProcess.running = true
-    }
-
-    function finishSystemAction(raw) {
-        try {
-            var result = JSON.parse(raw)
-            if (!result.ok)
-                throw new Error(result.error || "Action failed")
-            systemActionStatus = ""
-            refresh()
-        } catch (error) {
-            systemActionStatus = "Action failed: " + error.message
-            refresh()
-        }
+        systemActions.execute(action, payload)
     }
 
     function setDefaultAudioSink(id) { systemAction("audio-default", { id: id }) }
@@ -383,29 +256,11 @@ Item {
     function removeBluetooth(address) { systemAction("bluetooth-remove", { address: address }) }
 
     function setDisplayRole(role, monitor) {
-        var next = clone(draft)
-        if (!next.displays) next.displays = {}
-        next.displays[role] = {
-            connector: monitor.name || "",
-            serial: monitor.serial || "",
-            make: monitor.make || "",
-            model: monitor.model || "",
-            description: monitor.description || "",
-            mode: monitor.width + "x" + monitor.height + "@" + Number(monitor.refreshRate).toFixed(2),
-            position: (monitor.x || 0) + "x" + (monitor.y || 0),
-            scale: monitor.scale || 1.0
-        }
-        draft = next
-        dirty = true
+        draftLifecycle.setDisplayRole(role, monitor)
     }
 
     function setDisplayField(role, field, value) {
-        var next = clone(draft)
-        if (!next.displays) next.displays = {}
-        if (!next.displays[role]) next.displays[role] = {}
-        next.displays[role][field] = value
-        draft = next
-        dirty = true
+        draftLifecycle.setDisplayField(role, field, value)
     }
 
     function selectMonitor(index) {
@@ -418,52 +273,19 @@ Item {
     }
 
     function setProfileField(field, value) {
-        var next = clone(draft)
-        if (!next.display_profiles) next.display_profiles = clone(displayProfiles)
-        if (!next.display_profiles[selectedMonitorIndex]) return
-        next.display_profiles[selectedMonitorIndex][field] = value
-        draft = next
-        dirty = true
+        draftLifecycle.setProfileField(selectedMonitorIndex, field, value)
     }
 
     function setProfileRole(role, enabled) {
-        var profile = selectedProfile()
-        var next = clone(draft)
-        if (!next.displays) next.displays = {}
-        if (enabled) {
-            var existing = next.displays[role] || {}
-            existing.connector = profile.connector || ""
-            existing.serial = profile.serial || ""
-            existing.make = profile.make || ""
-            existing.model = profile.model || ""
-            existing.description = profile.description || ""
-            existing.mode = (profile.width || 0) + "x" + (profile.height || 0) + "@" + Number(profile.refresh_rate || 0).toFixed(2)
-            existing.position = (profile.x || 0) + "x" + (profile.y || 0)
-            existing.active = profile.active !== false
-            existing.adaptive_sync = profile.adaptive_sync === true
-            next.displays[role] = existing
-        } else if (next.displays[role] && next.displays[role].connector === profile.connector) {
-            delete next.displays[role]
-        }
-        draft = next
-        dirty = true
+        draftLifecycle.setProfileRole(role, selectedProfile(), enabled)
     }
 
     function setApplicationDefaults(field, value) {
-        var next = clone(draft)
-        if (!next.application_policies) next.application_policies = { defaults: {}, rules: [] }
-        if (!next.application_policies.defaults) next.application_policies.defaults = {}
-        next.application_policies.defaults[field] = value
-        draft = next
-        dirty = true
+        draftLifecycle.setApplicationDefaults(field, value)
     }
 
     function setApplicationRule(index, field, value) {
-        var next = clone(draft)
-        if (!next.application_policies || !next.application_policies.rules[index]) return
-        next.application_policies.rules[index][field] = value
-        draft = next
-        dirty = true
+        draftLifecycle.setApplicationRule(index, field, value)
     }
 
     function addApplicationRule() {
@@ -471,11 +293,8 @@ Item {
     }
 
     function addApplicationRuleFor(application, kind) {
-        var next = clone(draft)
-        if (!next.application_policies) next.application_policies = { defaults: {}, rules: [] }
-        if (!next.application_policies.rules) next.application_policies.rules = []
-        var classes = knownClasses(application)
-        next.application_policies.rules.push({
+        var classes = applicationMatching.knownClasses(application)
+        draftLifecycle.addApplicationRule({
             id: "rule-" + Date.now(),
             application: application || "",
             name: kind === "custom" ? "New custom rule" : "New window rule",
@@ -491,17 +310,10 @@ Item {
             inherit_exclude: "",
             custom_source: kind === "custom" ? "hl.window_rule({})" : ""
         })
-        draft = next
-        dirty = true
     }
 
     function setApplicationIdentity(application, field, value) {
-        var next = clone(draft)
-        if (!next.application_identities) next.application_identities = {}
-        if (!next.application_identities[application]) next.application_identities[application] = { classes: [], titles: [], confidence: "observed" }
-        next.application_identities[application][field] = value
-        draft = next
-        dirty = true
+        draftLifecycle.setApplicationIdentity(application, field, value)
     }
 
     function addApplicationClass(application, className, confidence) {
@@ -515,161 +327,39 @@ Item {
         setApplicationIdentity(application, "confidence", identity.confidence)
     }
 
-    function knownClasses(application) {
-        var identities = draft.application_identities || applicationIdentities || {}
-        var identity = identities[application]
-        return identity && identity.classes ? identity.classes : []
-    }
-
-    function identityConfidence(application) {
-        var identities = draft.application_identities || applicationIdentities || {}
-        var identity = identities[application]
-        return identity ? String(identity.confidence || "observed") : ""
-    }
-
-    function matchingClients(application) {
-        var classes = knownClasses(application)
-        return clients.filter(function(client) { return classes.indexOf(client.class) >= 0 })
-    }
-
-    function classPattern(value) {
-        return "^" + String(value || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "$"
-    }
-
-    function beginApplicationMatch(application, ruleIndex) {
-        var applicationId = String(application || "")
-        if (!applicationId) {
-            matchError = "Unable to match application. Select an installed application first."
-            matchDialogVisible = true
-            return
-        }
-        matchApplication = applicationId
-        matchRuleIndex = ruleIndex === undefined ? -1 : ruleIndex
-        matchError = ""
-        matchCandidates = matchingClients(applicationId)
-        if (matchCandidates.length) {
-            matchDialogVisible = true
-            return
-        }
-        matchBaseline = {}
-        for (var index = 0; index < clients.length; index++) matchBaseline[clients[index].address] = true
-        matchCandidates = []
-        matchSecondsRemaining = 15
-        matchDialogVisible = true
-        matchTimer.start()
-        var desktop = DesktopEntries.byId(applicationId) || DesktopEntries.heuristicLookup(applicationId)
-        if (!desktop) {
-            matchError = "Unable to launch application. Manually find the class using hyprctl or create a custom rule."
-            matchTimer.stop()
-            return
-        }
-        matchLaunchDesktop = desktop
-        Quickshell.execDetached(["hyprctl", "dispatch", "workspace", "emptynm"])
-        matchLaunchTimer.start()
-        pollMatch()
-    }
-
-    function pollMatch() {
-        if (!matchDialogVisible || matchCandidates.length) return
-        if (!clientProcess.running) clientProcess.running = true
-        matchSecondsRemaining = Math.max(0, matchSecondsRemaining - 0.4)
-        if (matchSecondsRemaining <= 0) {
-            matchTimer.stop()
-            matchError = "Unable to match application. Manually find the class using hyprctl or create a custom rule."
-        }
-    }
-
-    function finishClientPoll(raw) {
-        try {
-            var observed = JSON.parse(raw)
-            clients = observed.filter(function(client) { return client.mapped && !client.hidden && client.class !== "org.quickshell" }).map(function(client) {
-                return { address: client.address, class: client.class, title: client.title, pid: client.pid, workspace: client.workspace ? client.workspace.name : "", floating: client.floating, xwayland: client.xwayland }
-            })
-            if (!matchDialogVisible || matchCandidates.length) return
-            var candidates = clients.filter(function(client) { return !matchBaseline[client.address] })
-            if (candidates.length) {
-                matchCandidates = candidates
-                matchTimer.stop()
-            }
-        } catch (error) {
-            if (matchDialogVisible) matchError = "Unable to watch windows. Manually find the class using hyprctl or create a custom rule."
-        }
-    }
-
-    function selectApplicationMatch(candidate) {
-        if (!candidate) return
-        matchLaunchTimer.stop()
-        matchLaunchDesktop = null
-        addApplicationClass(matchApplication, candidate.class, "confirmed")
-        if (matchRuleIndex >= 0)
-            setApplicationRule(matchRuleIndex, "match_value", classPattern(candidate.class))
-        matchDialogVisible = false
-        matchError = ""
-        matchCandidates = []
-        matchRuleIndex = -1
-    }
-
-    function cancelApplicationMatch() {
-        matchTimer.stop()
-        matchLaunchTimer.stop()
-        matchLaunchDesktop = null
-        matchDialogVisible = false
-        matchCandidates = []
-        matchError = ""
-        matchRuleIndex = -1
-    }
+    // Compatibility wrappers keep the settings surface API stable while the
+    // application-matching state owns its timers and client snapshot.
+    function knownClasses(application) { return applicationMatching.knownClasses(application) }
+    function identityConfidence(application) { return applicationMatching.identityConfidence(application) }
+    function matchingClients(application) { return applicationMatching.matchingClients(application) }
+    function classPattern(value) { return applicationMatching.classPattern(value) }
+    function beginApplicationMatch(application, ruleIndex) { applicationMatching.beginApplicationMatch(application, ruleIndex) }
+    function pollMatch() { applicationMatching.pollMatch() }
+    function selectApplicationMatch(candidate) { applicationMatching.selectApplicationMatch(candidate) }
+    function cancelApplicationMatch() { applicationMatching.cancelApplicationMatch() }
 
     function removeApplicationRule(index) {
-        var next = clone(draft)
-        if (!next.application_policies || !next.application_policies.rules) return
-        next.application_policies.rules.splice(index, 1)
-        draft = next
-        dirty = true
+        draftLifecycle.removeApplicationRule(index)
     }
 
     function cancel() {
-        draft = clone(activeSettings)
-        dirty = false
-        status = ""
+        draftLifecycle.cancel()
     }
 
     function requestApply() {
-        if (!dirty)
-            return
-        applyCountdown = 10
-        applyConfirmationVisible = true
-        applyConfirmationTimer.start()
+        draftLifecycle.requestApply()
     }
 
     function cancelApply() {
-        applyConfirmationTimer.stop()
-        applyConfirmationVisible = false
-        applyCountdown = 0
+        draftLifecycle.cancelApply()
     }
 
     function confirmApply() {
-        if (!dirty) {
-            cancelApply()
-            return
-        }
-        cancelApply()
-        status = "Applying changes..."
-        applyProcess.command = [helper, "apply", JSON.stringify({ settings: draft, baseline: activeSettings })]
-        applyProcess.running = true
+        draftLifecycle.confirmApply()
     }
 
     function finishApply(raw) {
-        try {
-            var result = JSON.parse(raw)
-            if (!result.ok)
-                throw new Error(result.error || "Apply failed")
-            activeSettings = clone(draft)
-            dirty = false
-            status = "Applied. QuickShell will reload the updated settings."
-            refresh()
-        } catch (error) {
-            status = "Apply failed: " + error.message
-        }
+        draftLifecycle.finishApply(raw)
     }
 
     Component.onCompleted: {
@@ -677,4 +367,5 @@ Item {
         refresh()
         refreshWallpaperService()
     }
+
 }

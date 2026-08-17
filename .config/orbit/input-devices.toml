@@ -1,0 +1,8 @@
+# Only keyboard event devices matching these stable udev identities are read
+# by orbit-input-state. Add a device here deliberately when hardware changes.
+
+[[keyboard]]
+serial = "DZTECH_DZ65RGBV3"
+
+[[keyboard]]
+serial = "Logitech_USB_Receiver"

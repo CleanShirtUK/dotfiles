@@ -1,0 +1,16 @@
+#!/bin/sh
+
+set -eu
+
+if [ -x /usr/bin/quickshell ]; then
+    exec /usr/bin/quickshell "$@"
+fi
+
+local_root="$HOME/.local/opt/quickshell"
+if [ -x "$local_root/bin/quickshell" ]; then
+    export QML2_IMPORT_PATH="$local_root/lib64/qt6/qml${QML2_IMPORT_PATH:+:$QML2_IMPORT_PATH}"
+    exec "$local_root/bin/quickshell" "$@"
+fi
+
+printf 'Quickshell is not installed. Install the quickshell package first.\n' >&2
+exit 127

@@ -11,6 +11,7 @@ STATE_ROOT="${XDG_STATE_HOME:-$HOME/.local/state}/orbit/tests"
 LOG_DIR="${ORBIT_MANUAL_LOG_DIR:-$STATE_ROOT/manual-$RUN_ID}"
 RESULTS="$LOG_DIR/results.tsv"
 COMMAND_LOG="$LOG_DIR/commands.log"
+declare -A SEEN_IDS=()
 
 mkdir -p "$LOG_DIR"
 printf 'id\tstatus\tnotes\n' > "$RESULTS"
@@ -83,6 +84,11 @@ ask_result() {
 
 manual_test() {
     local id="$1" title="$2" command="$3" expected="$4" mode="${5:-manual}"
+    if [[ -n "${SEEN_IDS[$id]+registered}" ]]; then
+        printf 'Duplicate manual Test Matrix ID: %s\n' "$id" >&2
+        exit 2
+    fi
+    SEEN_IDS["$id"]=1
     printf '\n============================================================\n'
     printf '%s: %s\n' "$id" "$title"
     printf '\nCommand(s) to run:\n%s\n\nExpected behaviour to confirm:\n%s\n' "$command" "$expected"
@@ -153,7 +159,10 @@ manual_test APP-005 'Keyring prompt stays with initiating application' \
     'A reproducible locked-keyring prompt remains on the initiating application workspace and monitor.' blocked
 manual_test APP-006 'Steam toasts remain with Steam workspace and monitor' \
     'hyprctl clients -j | jq -r '\''.[] | select((.class // "")|test("steam";"i")) | [.class,.title,.monitor,.workspace.name,.floating] | @tsv'\''' \
-    'Trigger a Steam toast and confirm it appears on Steam workspace and Gaming monitor. The progress document records this as a known wrong-monitor defect.' known-fail
+    'Trigger a Steam toast and confirm it appears on Steam workspace and Gaming monitor, including when the toast/helper PID differs from the main Steam client.'
+manual_test APP-007 'Delayed application launch preserves initiating monitor context' \
+    'hyprctl monitors -j | jq .; hyprctl clients -j | jq -r ".[] | [.class,.title,.monitor,.workspace.name] | @tsv"' \
+    'Launch a delayed-start fixture from one monitor, move focus to another before its window appears, and confirm the new window remains on the initiating monitor and workspace.'
 
 manual_test UI-001 'Dock appears independently on every monitor' \
     'hyprctl monitors -j | jq -r ".[] | [.name,.focused] | @tsv"; pgrep -af "quickshell.*orbit" || true' \
@@ -173,6 +182,21 @@ manual_test UI-005 'No orphaned surfaces after monitor changes' \
 manual_test UI-006 'Alt+Tab release, rapid release, and MRU behavior' \
     'cat "${XDG_RUNTIME_DIR:?}/orbit/alt-held" 2>/dev/null || true; systemctl --user --no-pager --full status orbit-input-state.service' \
     'Alt+Tab opens the switcher; releasing Alt closes/activates as designed, rapid release does not stick the overlay, and repeated Alt+Tab follows most-recently-used order.'
+manual_test UI-007 'Dock-to-XMB handoff continuity' \
+    'orbit-xmb close; hyprctl layers -j | jq .; orbit-xmb open; sleep 1; hyprctl layers -j | jq .; orbit-xmb close' \
+    'The dock morphs into the launcher without a stuck surface, unintended workspace, or unacceptable blank interval; interruption and close recovery leave the normal dock restored.' run
+manual_test UI-008 'Orbit Settings dock icon' \
+    'hyprctl layers -j | jq .; pgrep -af "quickshell.*orbit" || true' \
+    'The synthetic Orbit Settings dock entry displays a standard settings icon after shell startup or reload.'
+manual_test UI-009 'Dock boundary magnification' \
+    'hyprctl monitors -j | jq -r ".[].name"' \
+    'Slow pointer entry from both sides of each connected dock increases magnification continuously, matching movement between dock icons.'
+manual_test UI-010 'Top panel launcher, clock, and tray' \
+    'hyprctl layers -j | jq .; date +%H:%M; busctl --user tree 2>/dev/null | head -40 || true' \
+    'Each monitor has the transparent top panel with a working launcher, current clock, and native tray interaction when a tray fixture is registered.'
+manual_test UI-011 'Top-panel application actions and menu' \
+    'hyprctl clients -j | jq .; busctl --user list 2>/dev/null | grep -i appmenu || true' \
+    'A disposable application window is represented by the correct panel; its protocol menu opens when available, otherwise Close window and Force quit application are available and act only on that window.'
 
 manual_test SET-002 'Staged draft, Cancel, Apply, and timeout cancellation' \
     'orbit-settings snapshot 2>/dev/null || true; pgrep -af "Orbit Settings|Settings.qml" || true' \
@@ -186,6 +210,18 @@ manual_test START-001 'Orbit startup after session environment import' \
 manual_test START-002 'Noctalia and reserved prototype are absent from autostart' \
     'systemctl --user --no-pager --plain is-enabled noctalia.service reserved-workspace-anchors.service 2>/dev/null || true; hyprctl clients -j | jq -r '\''.[].title'\'' | grep -E '\''^phleg-xmb-'\'' || true' \
     'Noctalia and the reserved-workspace anchor service are disabled/absent, and no fullscreen prototype clients exist.'
+manual_test START-003 'No prototype XMB clients or service remain' \
+    'hyprctl clients -j | jq -r ".[] | select((.title // "") | startswith("phleg-xmb-"))"; systemctl --user --no-pager --plain is-enabled reserved-workspace-anchors.service 2>/dev/null || true' \
+    'No prototype XMB clients or reserved-workspace service remain.'
+manual_test START-005 'Dock icons populate after startup and shell restart' \
+    'systemctl --user restart orbit-shell.service; sleep 2; hyprctl layers -j | jq .; pgrep -af "quickshell.*orbit" || true' \
+    'Dock icons populate after a fresh shell start and after a shell restart without QML errors or a missing dock.' run
+manual_test START-006 'Shutdown shortcut confirmation guard' \
+    'sh -n "$HOME/.config/hypr/scripts/animate-shutdown"; command -v zenity' \
+    'Canceling the shutdown confirmation leaves the session untouched; do not confirm termination in a normal session. A confirmed flow requires a disposable/recovery-tested session.'
+manual_test START-007 'Applications survive Orbit shell restart' \
+    'systemctl --user show orbit-shell.service -p NRestarts; hyprctl clients -j | jq -r ".[] | [.class,.title,.pid] | @tsv"' \
+    'Launch a disposable Zen or WezTerm window through Orbit, restart orbit-shell.service, and confirm the application remains open and outside the Orbit service cgroup.'
 
 manual_test THEME-002 'Live reload versus restart behavior per application' \
     'orbit-theme --help; find "$HOME/.config/orbit/generated" -maxdepth 2 -type f -printf "%p\\n" | sort' \
@@ -193,9 +229,16 @@ manual_test THEME-002 'Live reload versus restart behavior per application' \
 manual_test THEME-003 'Cross-toolkit visual/runtime matrix' \
     'orbit-theme --help; find "$HOME/.config/orbit/generated" -maxdepth 2 -type f -printf "%p\\n" | sort' \
     'GTK, Qt, terminal, Zed, Zen, Obsidian, QuickShell, and Hyprland all use the selected Tokyo Night palette with no unreadable contrast, stale colors, or missing generated adapter.'
-manual_test THEME-004 'Flatpak toolkit styling' \
-    'flatpak list --app 2>/dev/null || true; find "$HOME/.config/orbit/generated" -maxdepth 2 -type f -printf "%p\\n" | sort' \
-    'A representative Flatpak, including ProtonUp-Qt when installed, uses the selected toolkit theme after the required runtime setup and restart.'
+manual_test THEME-004 'Configured shell opacity and top-panel transparency' \
+    'hyprctl layers -j | jq .; orbit-settings snapshot 2>/dev/null | jq ".appearance.transparency"' \
+    'On both monitors with Hyprglass active, the dock, XMB, and Settings main surfaces use the configured 30% shell opacity while the top panel remains transparent and text remains readable.'
+
+manual_test SET-004 'Orbit Settings keybind read/edit/apply flow' \
+    'orbit-settings snapshot 2>/dev/null || true; pgrep -af "Orbit Settings|Settings.qml" || true' \
+    'Settings shows readable keybinds and safely persists and applies an edited standard or custom keybind according to the accepted contract.'
+manual_test SET-005 'Orbit Settings dock controls' \
+    'orbit-settings snapshot 2>/dev/null || true; pgrep -af "Orbit Settings|Settings.qml" || true' \
+    'Settings exposes bounded dock size, magnification, opacity, and padding controls with documented persistence and runtime behavior.'
 
 manual_test SEC-001 'Input helper device permissions' \
     'systemctl --user --no-pager --full status orbit-input-state.service; systemctl --user show orbit-input-state.service -p ExecStart -p User; id; ls -l /dev/input/event* 2>/dev/null | head -20' \

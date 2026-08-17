@@ -30,13 +30,21 @@ Orbit is the QuickShell-based desktop shell replacing Noctalia in the Phleg Hypr
 - [[Orbit - Change Log]]
 - [[Orbit - Prompt Repository]]
 - [[Orbit - Session Scratchpad]]
+- [[Orbit - Agent Workflows]]
+- [[Orbit - Validation Queue]]
+- [[Orbit - Repository Boundaries]]
+
+## Canonical Project Data
+
+- `orbit/project-manifest.json`: canonical project scope, completion definition, work-item state, evidence, and processing policy.
+- Orbit Markdown pages: human-readable views validated against the manifests. Until both manifests exist, the evidence-backed Markdown remains the tracking source.
 
 ## Immediate Focus
 
-- Establish Orbit as the only Hyprland shell autostart.
-- Remove the reserved-workspace fullscreen XMB prototype.
-- Validate login, lock/unlock, shutdown, dock, XMB, overview, and application routing.
-- Reduce duplicated state ownership and polling before adding more UI behavior.
+- Revalidate startup invariants, beginning with the missing runtime `Alt+Tab` binding, and close applicable attended stabilization gates.
+- Validate `orbit/project-manifest.json` and keep the Markdown projections synchronized with it.
+- Complete remaining full-scratchpad Orbit 1.0 behavior only after stabilization.
+- Complete the independently reproducible Standard dotfiles, Orbit, and Wallpaper repository split required for Orbit 1.0.
 
 ## Repository Map
 

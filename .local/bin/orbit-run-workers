@@ -1,0 +1,601 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+readonly ROOT=/home/josh
+readonly EXPECTED_BRANCH=main
+readonly EXPECTED_REMOTE=origin
+readonly EXPECTED_REMOTE_URL=https://github.com/CleanShirtUK/dotfiles.git
+readonly QUEUE_FILE='Documents/Obsidian/MainVault/phleg/Orbit - Validation Queue.md'
+readonly DEFAULT_MAX_ITEMS=10
+readonly LONG_RUN_MAX_ITEMS=1000
+readonly DEFAULT_TIMEOUT=7200
+
+usage() {
+    cat <<'EOF'
+Usage:
+  orbit-run-workers --auto --luna-model PROVIDER/MODEL [options]
+  orbit-run-workers --auto --resume-sol --sol-model PROVIDER/MODEL [--timeout SECONDS]
+
+Options:
+  --max-items N       Maximum independently committed items (default: 10)
+  --long-run          Explicitly raise the default maximum to 1000 items
+  --timeout SECONDS   Timeout for each agent or validator phase (default: 7200)
+  --resume-sol        Verify a result from the manually started high-risk Sol agent
+  --sol-model ID      Included Sol model used only for high-risk resume verification
+  --help              Show this help
+
+Model IDs are intentionally not pinned. Passing one asserts that it is locally
+available through the existing subscription and does not use a paid external
+provider or extra credits. Routine Luna items use deterministic independent
+verification; Sol is reserved for high-risk work and phase-boundary audits.
+EOF
+}
+
+fail() {
+    local code=$1
+    shift
+    printf 'orbit-run-workers: %s\n' "$*" >&2
+    exit "$code"
+}
+
+require_uint() {
+    local name=$1 value=$2
+    [[ $value =~ ^[1-9][0-9]*$ ]] || fail 2 "$name must be a positive integer"
+}
+
+require_model_id() {
+    local role=$1 value=$2
+    [[ $value == */* && $value != *[[:space:]]* ]] ||
+        fail 2 "$role model must be an explicit provider/model ID"
+}
+
+auto=false
+resume_sol=false
+long_run=false
+max_items=$DEFAULT_MAX_ITEMS
+max_items_set=false
+phase_timeout=$DEFAULT_TIMEOUT
+luna_model=${ORBIT_LUNA_MODEL:-}
+sol_model=${ORBIT_SOL_MODEL:-}
+
+while (($#)); do
+    case $1 in
+        --auto) auto=true; shift ;;
+        --resume-sol) resume_sol=true; shift ;;
+        --long-run) long_run=true; shift ;;
+        --max-items)
+            (($# >= 2)) || fail 2 '--max-items requires a value'
+            max_items=$2
+            max_items_set=true
+            shift 2
+            ;;
+        --timeout)
+            (($# >= 2)) || fail 2 '--timeout requires a value'
+            phase_timeout=$2
+            shift 2
+            ;;
+        --luna-model)
+            (($# >= 2)) || fail 2 '--luna-model requires a value'
+            luna_model=$2
+            shift 2
+            ;;
+        --sol-model)
+            (($# >= 2)) || fail 2 '--sol-model requires a value'
+            sol_model=$2
+            shift 2
+            ;;
+        --help|-h) usage; exit 0 ;;
+        *) fail 2 "unknown argument: $1" ;;
+    esac
+done
+
+$auto || fail 2 'refusing unattended operation without --auto'
+require_uint timeout "$phase_timeout"
+if $resume_sol; then
+    require_model_id Sol "$sol_model"
+    $long_run && fail 2 '--long-run cannot be used with --resume-sol'
+    $max_items_set && fail 2 '--max-items cannot be used with --resume-sol'
+else
+    require_model_id Luna "$luna_model"
+    if $long_run; then
+        $max_items_set && fail 2 'use either --long-run or --max-items, not both'
+        max_items=$LONG_RUN_MAX_ITEMS
+    fi
+    require_uint max-items "$max_items"
+fi
+
+for command in git jq flock timeout sha256sum mktemp opencode; do
+    command -v "$command" >/dev/null 2>&1 || fail 2 "required command is missing: $command"
+done
+
+state_dir=$ROOT/.local/state/orbit
+runs_dir=$state_dir/runs
+manifest=$state_dir/item-manifest.json
+result=$state_dir/worker-result.json
+dirty_manifest=$state_dir/starting-dirty.json
+mkdir -p "$runs_dir"
+
+exec 9>"$state_dir/worker.lock"
+flock -n 9 || fail 75 'another Orbit supervisor holds the worker lock'
+
+check_repository() {
+    local actual_root branch fetch_url push_url head remote_head git_path
+
+    actual_root=$(git -C "$ROOT" rev-parse --show-toplevel) || fail 2 'not a Git worktree'
+    [[ $actual_root == "$ROOT" ]] || fail 2 "unexpected repository root: $actual_root"
+    branch=$(git -C "$ROOT" branch --show-current)
+    [[ $branch == "$EXPECTED_BRANCH" ]] || fail 2 "expected branch $EXPECTED_BRANCH, found ${branch:-detached HEAD}"
+    fetch_url=$(git -C "$ROOT" remote get-url "$EXPECTED_REMOTE")
+    push_url=$(git -C "$ROOT" remote get-url --push "$EXPECTED_REMOTE")
+    [[ $fetch_url == "$EXPECTED_REMOTE_URL" ]] || fail 2 "unexpected fetch remote: $fetch_url"
+    [[ $push_url == "$EXPECTED_REMOTE_URL" ]] || fail 2 "unexpected push remote: $push_url"
+
+    for marker in MERGE_HEAD CHERRY_PICK_HEAD REVERT_HEAD; do
+        git_path=$(git -C "$ROOT" rev-parse --git-path "$marker")
+        [[ ! -e $git_path ]] || fail 2 "Git operation is in progress: $marker"
+    done
+    git_path=$(git -C "$ROOT" rev-parse --git-path rebase-merge)
+    [[ ! -d $git_path ]] || fail 2 'Git rebase is in progress'
+    git_path=$(git -C "$ROOT" rev-parse --git-path rebase-apply)
+    [[ ! -d $git_path ]] || fail 2 'Git rebase/am operation is in progress'
+    git -C "$ROOT" diff --cached --quiet || fail 2 'the real index is not clean; refusing commit contamination'
+
+    git -C "$ROOT" fetch --quiet "$EXPECTED_REMOTE" "$EXPECTED_BRANCH" ||
+        fail 1 'failed to fetch origin/main'
+    head=$(git -C "$ROOT" rev-parse HEAD)
+    remote_head=$(git -C "$ROOT" rev-parse "refs/remotes/$EXPECTED_REMOTE/$EXPECTED_BRANCH")
+    [[ $head == "$remote_head" ]] ||
+        fail 2 "local main must exactly match origin/main before selection (local $head, remote $remote_head)"
+}
+
+snapshot_tree() {
+    local output=$1 index_file tree
+    index_file=$(mktemp "$state_dir/snapshot-index.XXXXXX")
+    rm -f "$index_file"
+    GIT_INDEX_FILE=$index_file git -C "$ROOT" read-tree HEAD
+    GIT_INDEX_FILE=$index_file git -C "$ROOT" add -A -- . ':(exclude).local/state/orbit/**'
+    tree=$(GIT_INDEX_FILE=$index_file git -C "$ROOT" write-tree)
+    rm -f "$index_file"
+    printf '%s\n' "$tree" >"$output"
+}
+
+safe_relative_path() {
+    local path=$1
+    [[ -n $path && $path != /* && $path != '.' && $path != */ &&
+       $path != *'..'* && $path != *$'\n'* && $path != *$'\r'* &&
+       $path != .git && $path != .git/* &&
+       $path != .local/state/orbit && $path != .local/state/orbit/* ]]
+}
+
+ready_source_count() {
+    local source_ref=$1
+    [[ -f $ROOT/$QUEUE_FILE ]] || { printf '0\n'; return; }
+    awk -v ref="$source_ref" '
+        function finish() {
+            if (ready && index(source, "`" ref "`") > 0) count++
+            ready = 0
+            source = ""
+        }
+        /^### / { finish(); next }
+        /^- Status: READY[[:space:]]*$/ { ready = 1; next }
+        /^- Source issue \/ test \/ backlog:/ { source = $0; next }
+        END { finish(); print count + 0 }
+    ' "$ROOT/$QUEUE_FILE"
+}
+
+validate_manifest() {
+    local expected_hash=${1:-false}
+    jq -e --argjson expected_hash "$expected_hash" '
+        ((keys | sort) ==
+            (["acceptance", "allowed_paths", "item_id", "manual_reason", "plan", "risk",
+              "schema_version", "selection_state", "source_file", "source_ref",
+              "source_sha256", "test_ids", "title"] +
+             (if $expected_hash then ["supervisor"] else [] end) | sort)) and
+        .schema_version == 1 and
+        (.selection_state | IN("READY", "QUEUE_EMPTY", "BLOCKED", "MANUAL_ONLY")) and
+        (.item_id | type == "string") and
+        (.title | type == "string") and
+        (.source_file | type == "string") and
+        (.source_ref | type == "string") and
+        (.risk | IN("low", "medium", "high")) and
+        ((.manual_reason == null) or (.manual_reason | type == "string")) and
+        (.allowed_paths | type == "array") and
+        (.test_ids | type == "array") and
+        (.acceptance | type == "array") and
+        (.plan | type == "array") and
+        (if .selection_state == "READY" then
+            (.risk | IN("low", "medium")) and
+            (.item_id | length > 0) and (.title | length > 0) and
+            (.source_file | length > 0) and (.source_ref | length > 0) and
+            (.allowed_paths | length > 0) and (.test_ids | length > 0) and
+            (.acceptance | length > 0) and (.plan | length > 0)
+         elif .selection_state == "MANUAL_ONLY" then
+            .risk == "high" and (.manual_reason | type == "string" and length > 0) and
+            (.item_id | length > 0) and (.source_file | length > 0) and
+            (.source_ref | length > 0) and (.allowed_paths | length > 0) and
+            (.test_ids | length > 0)
+         else true end) and
+        (all(.allowed_paths[]; type == "string")) and
+        (all(.test_ids[]; type == "string" and length > 0)) and
+        (all(.acceptance[]; type == "string" and length > 0)) and
+        (all(.plan[]; type == "string" and length > 0)) and
+        ((.allowed_paths | unique | length) == (.allowed_paths | length)) and
+        ((.test_ids | unique | length) == (.test_ids | length)) and
+        (if $expected_hash then
+            (.source_sha256 | test("^[0-9a-f]{64}$")) and
+            ((.supervisor | keys | sort) == ["base_commit", "baseline_tree", "run_directory"]) and
+            (.supervisor.base_commit | test("^[0-9a-f]{40,64}$")) and
+            (.supervisor.baseline_tree | test("^[0-9a-f]{40,64}$")) and
+            (.supervisor.run_directory | type == "string" and length > 0)
+         else .source_sha256 == null end)
+    ' "$manifest" >/dev/null || fail 1 'selector produced an invalid manifest'
+
+    local path
+    while IFS= read -r path; do
+        safe_relative_path "$path" || fail 1 "manifest contains an unsafe path: $path"
+    done < <(jq -r '.allowed_paths[]' "$manifest")
+    if [[ $(jq -r '.selection_state' "$manifest") == READY ||
+          $(jq -r '.selection_state' "$manifest") == MANUAL_ONLY ]]; then
+        path=$(jq -r '.source_file' "$manifest")
+        safe_relative_path "$path" || fail 1 "manifest contains an unsafe source path: $path"
+        [[ -f $ROOT/$path ]] || fail 1 "manifest source does not exist: $path"
+    fi
+}
+
+run_agent() {
+    local output=$1 model=$2 agent=$3 prompt=$4
+    if ! NO_COLOR=1 timeout --signal=TERM --kill-after=30s "$phase_timeout" \
+        opencode run --agent "$agent" --model "$model" --auto --dir "$ROOT" "$prompt" \
+        >"$output" 2>"$output.stderr"; then
+        return 1
+    fi
+}
+
+run_audit() {
+    local phase=$1 item_id=$2 risk=$3 context=$4 output=$5 decision
+    run_agent "$output" "$sol_model" orbit-sol-auditor \
+        "Read $context and perform the $phase boundary audit. Return only the required JSON object." ||
+        fail 1 "$phase Sol audit process failed or timed out; see $output.stderr"
+    jq -e --arg phase "$phase" --arg item "$item_id" --arg risk "$risk" '
+        ((keys | sort) == ["decision", "findings", "item_id", "phase", "risk", "schema_version"]) and
+        .schema_version == 1 and .phase == $phase and .item_id == $item and
+        .risk == $risk and (.decision | IN("APPROVE", "REJECT", "MANUAL_REQUIRED")) and
+        (.findings | type == "array") and all(.findings[]; type == "string")
+    ' "$output" >/dev/null || fail 1 "$phase Sol audit did not return strict valid JSON"
+    decision=$(jq -r '.decision' "$output")
+    printf '%s\n' "$decision"
+}
+
+seal_manifest() {
+    local run_dir=$1 baseline_tree=$2 base_commit=$3 source_file source_hash temp
+    source_file=$(jq -r '.source_file' "$manifest")
+    if [[ -n $source_file ]]; then
+        source_hash=$(sha256sum "$ROOT/$source_file")
+        source_hash=${source_hash%% *}
+    else
+        source_hash=$(printf '' | sha256sum)
+        source_hash=${source_hash%% *}
+    fi
+    temp=$run_dir/manifest.sealing.json
+    jq --arg hash "$source_hash" \
+       --arg run_directory "${run_dir#$ROOT/}" \
+       --arg baseline_tree "$baseline_tree" \
+       --arg base_commit "$base_commit" \
+       '.source_sha256 = $hash |
+        .supervisor = {
+          run_directory: $run_directory,
+          baseline_tree: $baseline_tree,
+          base_commit: $base_commit
+        }' "$manifest" >"$temp"
+    mv "$temp" "$manifest"
+    validate_manifest true
+    cp "$manifest" "$run_dir/manifest.json"
+    sha256sum "$manifest" | cut -d ' ' -f 1 >"$run_dir/manifest.sha256"
+}
+
+verify_sealed_manifest() {
+    local run_dir=$1 expected actual
+    [[ -f $run_dir/manifest.json && -f $run_dir/manifest.sha256 ]] ||
+        fail 1 'sealed manifest evidence is missing'
+    cmp -s "$manifest" "$run_dir/manifest.json" || fail 1 'sealed manifest was changed'
+    expected=$(<"$run_dir/manifest.sha256")
+    actual=$(sha256sum "$manifest")
+    actual=${actual%% *}
+    [[ $actual == "$expected" ]] || fail 1 'sealed manifest hash changed'
+    validate_manifest true
+}
+
+verify_allowed_paths_clean_at_start() {
+    local base_commit=$1 baseline_tree=$2 path source_file
+    source_file=$(jq -r '.source_file' "$manifest")
+    git -C "$ROOT" diff --quiet "$base_commit" "$baseline_tree" -- "$source_file" ||
+        fail 3 "selected source file was already dirty at item start: $source_file"
+    while IFS= read -r path; do
+        git -C "$ROOT" diff --quiet "$base_commit" "$baseline_tree" -- "$path" ||
+            fail 3 "selected path was already dirty at item start: $path"
+    done < <(jq -r '.allowed_paths[]' "$manifest")
+}
+
+validate_worker_result() {
+    local risk=$1
+    [[ -s $result ]] || fail 1 'executor did not write worker-result.json'
+    jq -e --arg risk "$risk" '
+        . as $result |
+        ((keys | sort) == ["blocker", "changed_files", "evidence", "item_id", "package_changes",
+                           "queue_state", "risk", "schema_version", "source_sha256", "status",
+                           "sudo_commands", "test_ids"]) and
+        .schema_version == 1 and (.status | IN("COMPLETED", "BLOCKED")) and
+        (.item_id | type == "string" and length > 0) and
+        (.source_sha256 | test("^[0-9a-f]{64}$")) and .risk == $risk and
+        (.changed_files | type == "array") and all(.changed_files[]; type == "string") and
+        (.test_ids | type == "array") and all(.test_ids[]; type == "string") and
+        (.evidence | type == "array") and
+        all(.evidence[]; ((keys | sort) == ["command", "exit_code", "summary"]) and
+                         (.command | type == "string" and length > 0) and
+                         (.exit_code | type == "number") and (.summary | type == "string")) and
+        ((.queue_state | keys | sort) == ["entry_id", "source_ref", "state"]) and
+        (.queue_state.state | IN("NONE", "READY_ADDED")) and
+        (.queue_state.source_ref | type == "string") and
+        ((.queue_state.entry_id == null) or (.queue_state.entry_id | type == "string")) and
+        (.package_changes | type == "array") and
+        all(.package_changes[];
+            ((keys | sort) == ["command", "manager", "operation", "package", "result", "version"]) and
+            (.manager | type == "string" and length > 0) and
+            (.operation | type == "string" and length > 0) and
+            (.package | type == "string" and length > 0) and
+            (.version | type == "string" and length > 0) and
+            (.command | type == "string" and length > 0) and
+            (.result | type == "string" and length > 0)) and
+        (.sudo_commands | type == "array") and all(.sudo_commands[]; type == "string" and startswith("sudo ")) and
+        (all(.package_changes[];
+            . as $change |
+            if ($change.command | startswith("sudo ")) then
+                ($result.sudo_commands | index($change.command)) != null
+            else true end)) and
+        (all(.sudo_commands[];
+            . as $command |
+            ([$result.package_changes[].command] | index($command)) != null)) and
+        ((.blocker == null) or (.blocker | type == "string")) and
+        (if .status == "COMPLETED" then
+            (.evidence | length > 0) and .blocker == null
+         else (.blocker | type == "string" and length > 0) and .queue_state.state == "NONE" end) and
+        (if .queue_state.state == "READY_ADDED" then
+            (.queue_state.entry_id | type == "string" and length > 0)
+         else .queue_state.entry_id == null end)
+    ' "$result" >/dev/null || fail 1 'executor produced an invalid structured result'
+
+    [[ $(jq -r '.item_id' "$result") == $(jq -r '.item_id' "$manifest") ]] ||
+        fail 1 'result item ID does not match the manifest'
+    [[ $(jq -r '.source_sha256' "$result") == $(jq -r '.source_sha256' "$manifest") ]] ||
+        fail 1 'result source hash does not match the manifest'
+    [[ $(jq -c '.test_ids | sort' "$result") == $(jq -c '.test_ids | sort' "$manifest") ]] ||
+        fail 1 'result test IDs do not exactly match the manifest'
+    [[ $(jq -r '.queue_state.source_ref' "$result") == $(jq -r '.source_ref' "$manifest") ]] ||
+        fail 1 'result queue source does not match the manifest'
+}
+
+verify_and_publish() {
+    local run_dir=$1 executor_role=$2 baseline_tree base_commit item_id title risk
+    local after_tree changed_json result_changed_json path ready_before ready_after queue_state
+    local validator_dir validator_log validator_summary audit_context audit_output audit_decision
+    local current_tree staged_json commit_message commit_id commit_paths_json remote_commit
+
+    verify_sealed_manifest "$run_dir"
+    baseline_tree=$(jq -r '.supervisor.baseline_tree' "$manifest")
+    base_commit=$(jq -r '.supervisor.base_commit' "$manifest")
+    item_id=$(jq -r '.item_id' "$manifest")
+    title=$(jq -r '.title' "$manifest")
+    risk=$(jq -r '.risk' "$manifest")
+    [[ $(git -C "$ROOT" rev-parse HEAD) == "$base_commit" ]] ||
+        fail 1 'HEAD changed after selection; refusing to verify against a stale baseline'
+
+    validate_worker_result "$risk"
+    snapshot_tree "$run_dir/after-tree"
+    after_tree=$(<"$run_dir/after-tree")
+    changed_json=$(git -C "$ROOT" diff --name-only -z "$baseline_tree" "$after_tree" |
+        jq -Rs 'split("\u0000") | map(select(length > 0)) | sort')
+    result_changed_json=$(jq -c '.changed_files | sort' "$result")
+    [[ $(jq -c . <<<"$changed_json") == "$result_changed_json" ]] ||
+        fail 1 'reported changed files do not exactly match the baseline delta'
+
+    while IFS= read -r path; do
+        safe_relative_path "$path" || fail 1 "executor changed an unsafe path: $path"
+        jq -e --arg path "$path" '.allowed_paths | index($path) != null' "$manifest" >/dev/null ||
+            fail 1 "executor changed a path outside the manifest: $path"
+    done < <(jq -r '.[]' <<<"$changed_json")
+
+    git -C "$ROOT" diff --check "$baseline_tree" "$after_tree" -- ||
+        fail 1 'baseline delta failed git diff --check'
+    git -C "$ROOT" diff --binary "$baseline_tree" "$after_tree" -- >"$run_dir/item.diff"
+
+    ready_before=$(jq -r '.ready_source_count_before' "$run_dir/plan-context.json")
+    ready_after=$(ready_source_count "$(jq -r '.source_ref' "$manifest")")
+    queue_state=$(jq -r '.queue_state.state' "$result")
+    if [[ $queue_state == READY_ADDED ]]; then
+        [[ $ready_before == 0 && $ready_after == 1 ]] ||
+            fail 1 "READY queue source must be newly unique (before $ready_before, after $ready_after)"
+    else
+        [[ $ready_after == "$ready_before" ]] ||
+            fail 1 'validation queue changed without READY_ADDED in the result'
+    fi
+
+    if [[ $(jq -r '.status' "$result") == BLOCKED ]]; then
+        printf 'Executor blocked item %s: %s\n' "$item_id" "$(jq -r '.blocker' "$result")" >&2
+        fail 3 "blocked item left an inspected, uncommitted delta in $run_dir"
+    fi
+    [[ $(jq 'length' <<<"$changed_json") -gt 0 ]] || fail 1 'completed item made no project change'
+
+    validator_dir=$run_dir/validator
+    validator_log=$run_dir/validator.log
+    mkdir -p "$validator_dir"
+    if ! ORBIT_TEST_LOG_DIR=$validator_dir timeout --signal=TERM --kill-after=30s "$phase_timeout" \
+        "$ROOT/tests/orbit/run-all" >"$validator_log" 2>"$validator_log.stderr"; then
+        fail 1 "independent deterministic validator failed or timed out; see $validator_log"
+    fi
+    validator_summary=$validator_dir/summary.json
+    jq -e '.status == "PASS" and .failed == 0 and .skipped == 0' "$validator_summary" >/dev/null ||
+        fail 1 'independent validator summary is not a clean PASS'
+    while IFS= read -r path; do
+        jq -e --arg id "$path" 'any(.tests[]; .id == $id and .status == "PASS")' \
+            "$validator_summary" >/dev/null ||
+            fail 1 "manifest test ID did not independently pass: $path"
+    done < <(jq -r '.test_ids[]' "$manifest")
+
+    if [[ $executor_role == manual-sol ]]; then
+        audit_context=$run_dir/implementation-context.json
+        jq -n --arg phase IMPLEMENTATION --arg item_id "$item_id" --arg risk "$risk" \
+            --arg executor_role "$executor_role" \
+            --arg manifest "${manifest#$ROOT/}" --arg result "${result#$ROOT/}" \
+            --arg diff "${run_dir#$ROOT/}/item.diff" \
+            --arg validator "${validator_summary#$ROOT/}" \
+            --argjson ready_before "$ready_before" --argjson ready_after "$ready_after" \
+            '{schema_version: 1, phase: $phase, item_id: $item_id, risk: $risk,
+              executor_role: $executor_role, manifest: $manifest, result: $result,
+              diff: $diff, validator_summary: $validator,
+              ready_source_count_before: $ready_before, ready_source_count_after: $ready_after}' \
+            >"$audit_context"
+        audit_output=$run_dir/implementation-audit.json
+        audit_decision=$(run_audit IMPLEMENTATION "$item_id" "$risk" \
+            "${audit_context#$ROOT/}" "$audit_output")
+        [[ $audit_decision == APPROVE ]] ||
+            fail 3 "Sol high-risk implementation audit returned $audit_decision; no commit was made"
+    fi
+
+    snapshot_tree "$run_dir/pre-commit-tree"
+    current_tree=$(<"$run_dir/pre-commit-tree")
+    [[ $current_tree == "$after_tree" ]] ||
+        fail 1 'worktree changed during verification; no commit was made'
+    git -C "$ROOT" diff --cached --quiet || fail 1 'real index became dirty during verification'
+    mapfile -t changed_paths < <(jq -r '.[]' <<<"$changed_json")
+    git -C "$ROOT" add -- "${changed_paths[@]}"
+    staged_json=$(git -C "$ROOT" diff --cached --name-only -z |
+        jq -Rs 'split("\u0000") | map(select(length > 0)) | sort')
+    [[ $(jq -c . <<<"$staged_json") == $(jq -c . <<<"$changed_json") ]] ||
+        fail 1 'staged paths do not exactly match the verified item'
+    git -C "$ROOT" diff --cached --check || fail 1 'staged item failed git diff --check'
+
+    title=${title//$'\n'/ }
+    title=${title//$'\r'/ }
+    commit_message="orbit: $item_id $title"
+    git -C "$ROOT" commit -m "$commit_message" || fail 1 'verified item commit failed'
+    commit_id=$(git -C "$ROOT" rev-parse HEAD)
+    [[ $(git -C "$ROOT" rev-parse HEAD^) == "$base_commit" ]] ||
+        fail 1 "commit $commit_id has an unexpected parent; it was not pushed"
+    commit_paths_json=$(git -C "$ROOT" diff-tree --no-commit-id --name-only -r -z "$commit_id" |
+        jq -Rs 'split("\u0000") | map(select(length > 0)) | sort')
+    [[ $(jq -c . <<<"$commit_paths_json") == $(jq -c . <<<"$changed_json") ]] ||
+        fail 1 "commit $commit_id contains paths outside the verified item; it was not pushed"
+    if ! git -C "$ROOT" push "$EXPECTED_REMOTE" "HEAD:$EXPECTED_BRANCH"; then
+        fail 1 "commit $commit_id exists locally but push failed; stopping safely"
+    fi
+    remote_commit=$(git -C "$ROOT" ls-remote "$EXPECTED_REMOTE" "refs/heads/$EXPECTED_BRANCH" | cut -f 1)
+    [[ $remote_commit == "$commit_id" ]] ||
+        fail 1 "push verification failed for commit $commit_id"
+    printf 'Verified, committed, and pushed %s as %s\n' "$item_id" "$commit_id"
+}
+
+check_repository
+
+if $resume_sol; then
+    [[ -s $manifest ]] || fail 2 'no sealed manual Sol manifest is available'
+    validate_manifest true
+    [[ $(jq -r '.selection_state' "$manifest") == MANUAL_ONLY ]] ||
+        fail 2 '--resume-sol requires a MANUAL_ONLY manifest'
+    [[ $(jq -r '.risk' "$manifest") == high ]] || fail 2 '--resume-sol requires risk high'
+    run_relative=$(jq -r '.supervisor.run_directory' "$manifest")
+    safe_relative_path "$run_relative/placeholder" || fail 2 'manifest run directory is unsafe'
+    [[ $run_relative == .local/state/orbit/runs/* ]] || fail 2 'manifest run directory is outside Orbit state'
+    run_dir=$ROOT/$run_relative
+    verify_allowed_paths_clean_at_start \
+        "$(jq -r '.supervisor.base_commit' "$manifest")" \
+        "$(jq -r '.supervisor.baseline_tree' "$manifest")"
+    verify_and_publish "$run_dir" manual-sol
+    exit 0
+fi
+
+completed=0
+while ((completed < max_items)); do
+    check_repository
+    run_id=$(date -u +%Y%m%dT%H%M%SZ)-$$-$((completed + 1))
+    run_dir=$runs_dir/$run_id
+    mkdir -p "$run_dir"
+    base_commit=$(git -C "$ROOT" rev-parse HEAD)
+    snapshot_tree "$run_dir/baseline-tree"
+    baseline_tree=$(<"$run_dir/baseline-tree")
+
+    status_entries=$(git -C "$ROOT" status --porcelain=v1 --untracked-files=all |
+        jq -Rsc 'split("\n") | map(select(length > 0))')
+    jq -n --arg root "$ROOT" --arg branch "$EXPECTED_BRANCH" --arg remote "$EXPECTED_REMOTE_URL" \
+        --arg base_commit "$base_commit" --arg baseline_tree "$baseline_tree" \
+        --arg created_at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" --argjson entries "$status_entries" \
+        '{schema_version: 1, root: $root, branch: $branch, remote: $remote,
+          base_commit: $base_commit, baseline_tree: $baseline_tree,
+          created_at: $created_at, entries: $entries}' >"$dirty_manifest"
+    cp "$dirty_manifest" "$run_dir/starting-dirty.json"
+
+    rm -f "$manifest" "$result"
+    selector_log=$run_dir/selector.log
+    run_agent "$selector_log" "$luna_model" orbit-selector \
+        'Select and plan exactly one item. Write only the required item manifest; do not implement it.' ||
+        fail 1 "Luna selector failed or timed out; see $selector_log.stderr"
+    [[ -s $manifest ]] || fail 1 'selector did not write item-manifest.json'
+    validate_manifest false
+    seal_manifest "$run_dir" "$baseline_tree" "$base_commit"
+
+    selection_state=$(jq -r '.selection_state' "$manifest")
+    item_id=$(jq -r '.item_id' "$manifest")
+    risk=$(jq -r '.risk' "$manifest")
+    source_ref=$(jq -r '.source_ref' "$manifest")
+    if [[ $selection_state == READY || $selection_state == MANUAL_ONLY ]]; then
+        verify_allowed_paths_clean_at_start "$base_commit" "$baseline_tree"
+        ready_before=$(ready_source_count "$source_ref")
+    else
+        ready_before=0
+    fi
+
+    plan_context=$run_dir/plan-context.json
+    jq -n --arg phase PLAN --arg item_id "$item_id" --arg risk "$risk" \
+        --arg selection_state "$selection_state" --arg manifest "${manifest#$ROOT/}" \
+        --arg starting_dirty "${dirty_manifest#$ROOT/}" --arg queue_file "$QUEUE_FILE" \
+        --argjson ready_before "$ready_before" \
+        '{schema_version: 1, phase: $phase, item_id: $item_id, risk: $risk,
+          selection_state: $selection_state, manifest: $manifest,
+          starting_dirty_manifest: $starting_dirty, validation_queue: $queue_file,
+          ready_source_count_before: $ready_before}' >"$plan_context"
+    snapshot_tree "$run_dir/post-plan-tree"
+    [[ $(<"$run_dir/post-plan-tree") == "$baseline_tree" ]] ||
+        fail 1 'selector or plan audit changed the project worktree'
+
+    case $selection_state in
+        QUEUE_EMPTY)
+            printf 'Orbit selector reports that no actionable item remains. Run a manual Sol phase audit before declaring the phase complete.\n'
+            exit 0
+            ;;
+        BLOCKED)
+            fail 3 "selection blocked: $(jq -r '.manual_reason // "unspecified"' "$manifest")"
+            ;;
+        MANUAL_ONLY)
+            ((ready_before == 0)) || fail 3 "refusing duplicate READY source: $source_ref"
+            printf 'High-risk item %s requires a manually started Sol session.\n' "$item_id" >&2
+            printf 'Start: opencode %q --agent orbit-sol-implementation --model "$ORBIT_SOL_MODEL"\n' "$ROOT" >&2
+            printf 'Then: orbit-run-workers --auto --resume-sol --sol-model "$ORBIT_SOL_MODEL" --timeout %q\n' \
+                "$phase_timeout" >&2
+            exit 3
+            ;;
+        READY)
+            ((ready_before == 0)) || fail 3 "refusing duplicate READY source: $source_ref"
+            ;;
+    esac
+
+    verify_sealed_manifest "$run_dir"
+    rm -f "$result"
+    worker_log=$run_dir/worker.log
+    run_agent "$worker_log" "$luna_model" orbit-worker \
+        'Execute only the sealed item manifest. Write the required structured result as your final operation.' ||
+        fail 1 "Luna worker failed or timed out; see $worker_log.stderr"
+    verify_and_publish "$run_dir" luna
+    completed=$((completed + 1))
+done
+
+printf 'Reached the explicit maximum of %s independently verified items.\n' "$max_items" >&2
+exit 4

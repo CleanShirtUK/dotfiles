@@ -4,54 +4,44 @@ set -eu
 
 state_dir="${XDG_CACHE_HOME:-$HOME/.cache}/orbit"
 state_file="$state_dir/overview-visible"
-cycle_file="$state_dir/overview-cycle"
+obsolete_cycle_file="$state_dir/overview-cycle"
 lock_file="$state_dir/overview.lock"
 mkdir -p "$state_dir"
+. "$HOME/.local/lib/orbit-state"
+[ -e "$obsolete_cycle_file" ] && rm -f "$obsolete_cycle_file"
 
 read_state() {
-    state="closed 0"
+    state="closed 0 0"
     [ -f "$state_file" ] && state="$(tr -d '\n' < "$state_file")"
     set -- $state
     state_status="${1:-closed}"
     state_revision="${2:-0}"
+    state_cycles="${3:-0}"
 }
 
 write_state() {
-    temporary="$state_file.$$"
-    printf '%s %s\n' "$1" "$2" > "$temporary"
-    mv -f "$temporary" "$state_file"
+    orbit_state_write "$state_file" "$1 $2 $3"
 }
 
 lock_state() {
-    exec 9>"$lock_file"
-    flock -x 9
-}
-
-ipc_call() {
-    "$HOME/.local/bin/phleg-quickshell" --config orbit ipc call orbit-overview "$1" >/dev/null 2>&1
+    orbit_state_lock "$lock_file"
 }
 
 case "${1:-open}" in
     open)
         lock_state
-        if ipc_call open; then
-            read_state
-            write_state open "$((state_revision + 1))"
-            exit 0
-        fi
         read_state
-        write_state open "$((state_revision + 1))"
+        write_state open "$((state_revision + 1))" "$state_cycles"
         ;;
     close)
         lock_state
-        ipc_call close || true
         read_state
-        write_state closed "$((state_revision + 1))"
+        write_state closed "$((state_revision + 1))" "$state_cycles"
         ;;
     close-state)
         lock_state
         read_state
-        write_state closed "$((state_revision + 1))"
+        write_state closed "$((state_revision + 1))" "$state_cycles"
         ;;
     activate)
         address="${2:-}"
@@ -67,37 +57,20 @@ case "${1:-open}" in
         hyprctl dispatch "hl.dsp.focus({ workspace = \"$workspace\" })" >/dev/null
         ;;
     cycle)
+        lock_state
         read_state
-        if [ "$state_status" != open ]; then
-            starting_revision="$state_revision"
-            sleep 0.03
-            lock_state
-            read_state
-            [ "$state_revision" = "$starting_revision" ] || exit 0
-            if ipc_call cycle; then
-                write_state open "$((state_revision + 1))"
-                printf '0\n' > "$cycle_file"
-                exit 0
-            fi
-            write_state open "$((state_revision + 1))"
-            printf '0\n' > "$cycle_file"
-        else
-            lock_state
-            if ipc_call cycle; then
-                exit 0
-            fi
-            request=0
-            [ -f "$cycle_file" ] && request="$(tr -d '[:space:]' < "$cycle_file")"
-            printf '%s\n' "$((request + 1))" > "$cycle_file"
+        if [ "$state_status" = open ]; then
+            state_cycles=$((state_cycles + 1))
         fi
+        write_state open "$((state_revision + 1))" "$state_cycles"
         ;;
     toggle)
         lock_state
         read_state
         if [ "$state_status" = open ]; then
-            write_state closed "$((state_revision + 1))"
+            write_state closed "$((state_revision + 1))" "$state_cycles"
         else
-            write_state open "$((state_revision + 1))"
+            write_state open "$((state_revision + 1))" "$state_cycles"
         fi
         ;;
     *)

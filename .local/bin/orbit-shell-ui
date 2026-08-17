@@ -6,14 +6,11 @@ state_dir="${XDG_CACHE_HOME:-$HOME/.cache}/orbit"
 state_file="$state_dir/shell-visible"
 lock_file="$state_dir/shell-visible.lock"
 mkdir -p "$state_dir"
+. "$HOME/.local/lib/orbit-state"
 
 atomic_write() {
-    value="$1"
-    exec 9>"$lock_file"
-    flock -x 9
-    temporary="$state_file.$$"
-    printf '%s\n' "$value" > "$temporary"
-    mv -f "$temporary" "$state_file"
+    orbit_state_lock "$lock_file"
+    orbit_state_write "$state_file" "$1"
 }
 
 case "${1:-status}" in

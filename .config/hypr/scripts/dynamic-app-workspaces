@@ -25,10 +25,7 @@ client_json() {
 }
 
 reserved_workspace() {
-    case "$1" in
-        DP-1) printf '1\n' ;;
-        HDMI-A-1) printf '6\n' ;;
-    esac
+    "$monitor_resolver" workspace-for-monitor "$1" 2>/dev/null || true
 }
 
 reserved_anchor_class() {
@@ -172,12 +169,13 @@ route_window() {
 
     reserved="$(reserved_workspace "$monitor")"
     # Steam menus and notifications use the same class as the main client but
-    # are transient floating surfaces. Keep them with Steam instead of giving
-    # each one a dynamic application workspace.
+    # are transient floating surfaces. Their helper processes can have a
+    # different PID, so correlate them with the visible non-floating Steam
+    # window rather than requiring PID equality.
     if [[ "$class" == steam ]]; then
         if [[ "$(jq -r '.floating' <<<"$client")" == true ]]; then
             workspace="$(client_json | jq -r --argjson pid "$pid" \
-                'first(.[] | select(.class == "steam" and .pid == $pid and (.floating | not)) | .workspace.name) // empty')"
+                'first(.[] | select(.class == "steam" and (.floating | not) and .title == "Steam") | .workspace.name) // first(.[] | select(.class == "steam" and (.floating | not)) | .workspace.name) // empty')"
             if [[ -n "$workspace" && "$current_workspace" != "$workspace" ]]; then
                 hyprctl dispatch --quiet \
                     "hl.dsp.window.move({ workspace = \"$workspace\", window = \"address:0x${address#0x}\" })" \

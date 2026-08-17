@@ -4,20 +4,20 @@
 *
 !.gitignore
 !README.md
+!opencode.json
+!.opencode/
+!.opencode/agent/
+!.opencode/agent/*.md
+!orbit/
+!orbit/**
 !.config/
 !.config/orbit/
-!.config/orbit/settings.toml
-!.config/orbit/app-policies.toml
-!.config/orbit/application-identities.toml
-!.config/orbit/dock.json
-!.config/orbit/xmb.json
+!.config/orbit/*.toml
+!.config/orbit/*.json
 !.config/orbit/palettes/
-!.config/orbit/palettes/tokyo-night.toml
+!.config/orbit/palettes/**
 !.config/orbit/generated/
-!.config/orbit/generated/tokyo-night/
-!.config/orbit/generated/tokyo-night/**
-!.config/orbit/generated/appearance.json
-!.config/orbit/generated/appearance.lua
+!.config/orbit/generated/**
 !.config/quickshell/
 !.config/quickshell/orbit/
 !.config/quickshell/orbit/**
@@ -70,7 +70,7 @@
 !.config/systemd/user/localsend.service
 !.config/systemd/user/wallpaper-session-effects.service
 !.config/systemd/user/game-mode.service
-!.config/systemd/user/orbit-shell.service
+!.config/systemd/user/orbit-*.service
 !.config/systemd/user/polkit-agent.service
 !.local/share/
 !.local/share/color-schemes/
@@ -80,14 +80,11 @@
 !.local/share/session-sounds/session-logout.wav
 !.local/
 !.local/bin/
-!.local/bin/orbit-monitor
-!.local/bin/orbit-app-policy
-!.local/bin/orbit-app-observe
-!.local/bin/orbit-theme
-!.local/bin/orbit-shell
-!.local/bin/orbit-shell-ui
-!.local/bin/orbit-overview
-!.local/bin/orbit-xmb
+!.local/bin/orbit-*
+!.local/bin/phleg-quickshell
+!.local/lib/
+!.local/lib/orbit-*
+!.local/lib/orbit_*.py
 !.local/bin/dotfiles-install-wallpaper
 !.local/bin/install-hyprwindowshade
 !.local/bin/configure-localsend
@@ -120,6 +117,8 @@ tests/**/__pycache__/
 !Documents/Obsidian/MainVault/phleg/Orbit - Issues and Corrections.md
 !Documents/Obsidian/MainVault/phleg/Orbit - Overview.md
 !Documents/Obsidian/MainVault/phleg/Orbit - Prompt Repository.md
+!Documents/Obsidian/MainVault/phleg/Orbit - Agent Workflows.md
+!Documents/Obsidian/MainVault/phleg/Orbit - Validation Queue.md
 !Documents/Obsidian/MainVault/phleg/Orbit - Refactor Backlog.md
 !Documents/Obsidian/MainVault/phleg/Orbit - Session Scratchpad.md
 !Documents/Obsidian/MainVault/phleg/Orbit - Startup and Session Lifecycle.md

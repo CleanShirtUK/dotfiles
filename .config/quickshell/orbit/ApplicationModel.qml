@@ -5,7 +5,10 @@ import QtQuick
 Item {
     id: root
 
+    signal launcherActivated()
+
     required property var windowModel
+    required property var monitorModel
     property var fallbackPinned: [
         { label: "Terminal", desktop: "org.wezfurlong.wezterm", class: "org.wezfurlong.wezterm" },
         { label: "Files", desktop: "org.gnome.Nautilus", class: "org.gnome.Nautilus", command: "nautilus --new-window" },
@@ -17,6 +20,8 @@ Item {
     property var pinned: fallbackPinned
     property var pendingLaunches: ({})
     property int launchRevision: 0
+    property int iconRevision: 0
+    property int iconReconciliationAttempts: 0
 
     FileView {
         id: dockFile
@@ -32,6 +37,14 @@ Item {
         running: true
         repeat: true
         onTriggered: root.reconcileLaunches()
+    }
+
+    Timer {
+        id: iconReadinessTimer
+        interval: 250
+        running: true
+        repeat: true
+        onTriggered: root.reconcileIcons()
     }
 
     Connections {
@@ -56,8 +69,24 @@ Item {
     }
 
     function iconPath(item) {
+        iconRevision
+        if (item.desktop === "orbit-settings")
+            return Quickshell.iconPath("settings-symbolic")
         var desktop = desktopFor(item.desktop)
         return desktop ? Quickshell.iconPath(desktop.icon) : ""
+    }
+
+    function reconcileIcons() {
+        iconRevision++
+        iconReconciliationAttempts++
+
+        var unresolved = items().some(function(item) {
+            if (item.desktop === "orbit-xmb" || item.desktop === "orbit-settings")
+                return false
+            return !root.iconPath(item)
+        })
+        if (!unresolved || iconReconciliationAttempts >= 40)
+            iconReadinessTimer.stop()
     }
 
     function appClass(item) {
@@ -151,29 +180,41 @@ Item {
 
     function launch(item) {
         var desktop = desktopFor(item.desktop)
+        var monitor = monitorModel.focusedName
+        var workspace = ""
+        for (var index = 0; index < monitorModel.monitors.length; index++) {
+            var candidate = monitorModel.monitors[index]
+            if (candidate.name === monitor && candidate.activeWorkspace)
+                workspace = String(candidate.activeWorkspace.name || candidate.activeWorkspace.id)
+        }
+        var expectedClass = desktop && desktop.startupWMClass ? desktop.startupWMClass : appClass(item)
+        var context = ["--monitor", monitor, "--workspace", workspace, "--class", expectedClass]
+        var launchId = "orbit-" + Date.now() + "-" + (++launchRevision)
         if (desktop) {
             beginLaunch(item)
-            Quickshell.execDetached([Quickshell.env("HOME") + "/.local/bin/orbit-app-observe", "launch", "--desktop", desktop.id || item.desktop, "--command", desktop.execString || ""])
-            desktop.execute()
+            Quickshell.execDetached([Quickshell.env("HOME") + "/.local/bin/orbit-app-observe", "launch", "--desktop", desktop.id || item.desktop, "--command", desktop.execString || "", "--launch-id", launchId])
+            Quickshell.execDetached([Quickshell.env("HOME") + "/.local/bin/orbit-app-launch"].concat(context).concat(["--launch-id", launchId, desktop.execString || ""]))
         } else if (item.command) {
             beginLaunch(item)
-            Quickshell.execDetached(["sh", "-lc", item.command])
+            Quickshell.execDetached([Quickshell.env("HOME") + "/.local/bin/orbit-app-launch"].concat(context).concat([item.command]))
         }
     }
 
     function launchNewWindow(item) {
         var desktop = desktopFor(item.desktop)
         if (desktop)
-            desktop.execute()
+            Quickshell.execDetached([Quickshell.env("HOME") + "/.local/bin/orbit-app-launch", desktop.execString || ""])
         else if (item.command)
-            Quickshell.execDetached(["sh", "-lc", item.command])
+            Quickshell.execDetached([Quickshell.env("HOME") + "/.local/bin/orbit-app-launch", item.command])
     }
 
     function close(item) {
         var expectedClass = appClass(item)
         windowModel.clients.forEach(function(client) {
-            if (client.class === expectedClass)
-                Quickshell.execDetached(["hyprctl", "dispatch", "closewindow", "address:" + client.address])
+            if (client.class === expectedClass) {
+                var focus = "hl.dsp.focus({ window = \"address:" + client.address + "\" })"
+                Quickshell.execDetached(["sh", "-lc", "hyprctl dispatch '" + focus + "' && hyprctl dispatch 'hl.dsp.window.close()'"])
+            }
         })
     }
 
@@ -195,7 +236,7 @@ Item {
             return
         }
         if (item.desktop === "orbit-xmb") {
-            Quickshell.execDetached([Quickshell.env("HOME") + "/.local/bin/orbit-xmb", "toggle"])
+            root.launcherActivated()
             return
         }
         if (item.address)

@@ -1,0 +1,35 @@
+[palette]
+name = "Nord"
+appearance = "dark"
+
+[colors]
+background = "#2e3440"
+background_deep = "#242933"
+surface = "#3b4252"
+surface_elevated = "#434c5e"
+surface_selected = "#4c566a"
+surface_highlight = "#414957"
+selection = "#4c566a"
+editor = "#2b303b"
+border = "#4c566a"
+border_strong = "#616e88"
+split = "#5e6779"
+muted = "#616e88"
+text = "#eceff4"
+text_muted = "#d8dee9"
+accent = "#88c0d0"
+accent_secondary = "#81a1c1"
+accent_deep = "#5e81ac"
+red = "#bf616a"
+green = "#a3be8c"
+yellow = "#ebcb8b"
+orange = "#d08770"
+cyan = "#8fbcbb"
+cyan_muted = "#8fbcbb"
+ansi_black = "#2e3440"
+ansi_white = "#e5e9f0"
+accent_foreground = "#2e3440"
+
+[gradients]
+cava = ["#a3be8c", "#ebcb8b", "#d08770", "#bf616a", "#b48ead", "#88c0d0"]
+horizontal_cava = ["#bf616a", "#d08770", "#ebcb8b", "#a3be8c", "#8fbcbb", "#88c0d0"]

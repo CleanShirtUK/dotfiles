@@ -278,16 +278,13 @@ installation.
 
 Application workspace routing is handled by
 `.config/hypr/scripts/dynamic-app-workspaces`. It allocates a live workspace
-on the launching monitor for each managed application process tree and routes
-child windows to that workspace. Empty nonpersistent workspaces are removed
-by Hyprland. Hyprshell provides the Alt+Tab switcher and selects workspaces on
-the current monitor using its live Hyprland integration.
-
-Hyprshell is managed by the user service
-`.config/systemd/user/hyprshell.service`, which runs
-`.config/hypr/scripts/hyprshell-start` with automatic restart-on-failure. The
-tracked configuration is in `.config/hyprshell/`, and its stylesheet imports
-the active GTK4 palette from `.config/gtk-4.0/noctalia.css`.
+on the initiating monitor for each managed application process tree and routes
+child windows according to Orbit policy. Empty nonpersistent workspaces are
+removed by Hyprland. Orbit's QuickShell overview owns Alt+Tab presentation and
+workspace selection; `.local/bin/orbit-shell` installs the runtime trigger and
+the allowlisted `orbit-input-state.service` supplies physical Alt-release
+state. Hyprshell is retained only as historical configuration and is not the
+active switcher owner.
 
 ## GameMode
 

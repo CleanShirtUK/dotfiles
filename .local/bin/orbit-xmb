@@ -6,27 +6,23 @@ state_dir="${XDG_CACHE_HOME:-$HOME/.cache}/orbit"
 state_file="$state_dir/xmb-visible"
 lock_file="$state_dir/xmb.lock"
 mkdir -p "$state_dir"
+. "$HOME/.local/lib/orbit-state"
 
 write_state() {
-    temporary="$state_file.$$"
-    printf '%s\n' "$1" > "$temporary"
-    mv -f "$temporary" "$state_file"
+    orbit_state_write "$state_file" "$1"
 }
 
 case "${1:-toggle}" in
     open)
-        exec 9>"$lock_file"
-        flock -x 9
+        orbit_state_lock "$lock_file"
         write_state 1
         ;;
     close)
-        exec 9>"$lock_file"
-        flock -x 9
+        orbit_state_lock "$lock_file"
         write_state 0
         ;;
     toggle)
-        exec 9>"$lock_file"
-        flock -x 9
+        orbit_state_lock "$lock_file"
         current=0
         [ -f "$state_file" ] && current="$(tr -d '[:space:]' < "$state_file")"
         if [ "$current" = 1 ]; then

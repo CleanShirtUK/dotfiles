@@ -1,0 +1,78 @@
+{
+  "palette": {
+    "name": "Catppuccin Mocha",
+    "appearance": "dark"
+  },
+  "colors": {
+    "background": "#1e1e2e",
+    "background_deep": "#11111b",
+    "surface": "#313244",
+    "surface_elevated": "#45475a",
+    "surface_selected": "#585b70",
+    "surface_highlight": "#3b3d52",
+    "selection": "#45475a",
+    "editor": "#181825",
+    "border": "#585b70",
+    "border_strong": "#7f849c",
+    "split": "#6c7086",
+    "muted": "#6c7086",
+    "text": "#cdd6f4",
+    "text_muted": "#a6adc8",
+    "accent": "#89b4fa",
+    "accent_secondary": "#cba6f7",
+    "accent_deep": "#74c7ec",
+    "red": "#f38ba8",
+    "green": "#a6e3a1",
+    "yellow": "#f9e2af",
+    "orange": "#fab387",
+    "cyan": "#89dceb",
+    "cyan_muted": "#94e2d5",
+    "ansi_black": "#181825",
+    "ansi_white": "#bac2de",
+    "accent_foreground": "#1e1e2e",
+    "gradients": {
+      "cava": [
+        "#a6e3a1",
+        "#f9e2af",
+        "#fab387",
+        "#f38ba8",
+        "#cba6f7",
+        "#89b4fa"
+      ],
+      "horizontal_cava": [
+        "#f38ba8",
+        "#fab387",
+        "#f9e2af",
+        "#a6e3a1",
+        "#89dceb",
+        "#89b4fa"
+      ]
+    }
+  },
+  "semantic": {
+    "window_background": "#1e1e2e",
+    "background_deep": "#11111b",
+    "surface": "#313244",
+    "surface_elevated": "#45475a",
+    "surface_selected": "#585b70",
+    "surface_highlight": "#3b3d52",
+    "selection": "#45475a",
+    "editor": "#181825",
+    "border": "#585b70",
+    "border_strong": "#7f849c",
+    "split": "#6c7086",
+    "muted": "#6c7086",
+    "text": "#cdd6f4",
+    "text_muted": "#a6adc8",
+    "accent": "#89b4fa",
+    "accent_secondary": "#cba6f7",
+    "accent_deep": "#74c7ec",
+    "error": "#f38ba8",
+    "success": "#a6e3a1",
+    "warning": "#f9e2af",
+    "orange": "#fab387",
+    "cyan": "#89dceb",
+    "cyan_muted": "#94e2d5",
+    "accent_foreground": "#1e1e2e"
+  }
+}

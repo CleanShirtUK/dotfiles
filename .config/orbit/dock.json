@@ -34,9 +34,14 @@
       "class": "steam"
     },
     {
-      "label": "Music",
-      "desktop": "org.jeffvli.feishin",
-      "class": "feishin"
+      "label": "Obsidian",
+      "desktop": "md.obsidian.Obsidian",
+      "class": "md.obsidian.Obsidian"
+    },
+    {
+      "label": "%U \u2014 %U",
+      "desktop": "dev.zed.Zed",
+      "class": "dev.zed.Zed"
     }
   ]
 }
